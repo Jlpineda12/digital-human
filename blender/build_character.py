@@ -160,13 +160,36 @@ def tube(name, points, radius, mat, cyclic=True, sides=6):
     return to_object(name, bm, mat)
 
 
-def rounded_rect_path(cx, cz, w, h, y, chamfer):
-    """Lens outline like the drawing: soft top corners, big chamfered bottom corners."""
+def rounded_rect_path(cx, cz, w, h, y, side, r_top=0.035, r_bot_out=0.095, r_bot_in=0.075, bulge=0.012,
+                      wrap=0.05, seg=5):
+    """Lens outline like the drawing: a rounded rectangle (big rounded bottom
+    corners, small top ones), slightly bulging edges, wrapped around the face
+    (outer side further back)."""
     hw, hh = w / 2, h / 2
-    c0, c1 = chamfer * 0.55, chamfer * 1.6
-    pts = [(-hw + c0, hh), (hw - c0, hh), (hw, hh - c0), (hw, -hh + c1),
-           (hw - c1, -hh), (-hw + c1, -hh), (-hw, -hh + c1), (-hw, hh - c0)]
-    return [(cx + x, y, cz + z) for x, z in pts]
+    o = 1 if side > 0 else -1          # outer side direction in x
+    # corners: (centre_x, centre_z, radius, start_angle)
+    corners = [
+        (hw - r_top, hh - r_top, r_top, 0.0),                          # top-right
+        (-hw + r_top, hh - r_top, r_top, math.pi / 2),                 # top-left
+        (-hw + (r_bot_out if o < 0 else r_bot_in), -hh + (r_bot_out if o < 0 else r_bot_in),
+         r_bot_out if o < 0 else r_bot_in, math.pi),                   # bottom-left
+        (hw - (r_bot_out if o > 0 else r_bot_in), -hh + (r_bot_out if o > 0 else r_bot_in),
+         r_bot_out if o > 0 else r_bot_in, 1.5 * math.pi),             # bottom-right
+    ]
+    pts = []
+    for ccx, ccz, r, a0 in corners:
+        for k in range(seg + 1):
+            a = a0 + (math.pi / 2) * k / seg
+            pts.append((ccx + r * math.cos(a), ccz + r * math.sin(a)))
+    out = []
+    for x, z in pts:
+        # bulge the straight edges outward a little (hand-drawn curvature)
+        bx = bulge * math.cos(math.pi * z / (2 * hh)) * (1 if x > 0 else -1) * (abs(x) > hw - 0.02)
+        bz = bulge * math.cos(math.pi * x / (2 * hw)) * (1 if z > 0 else -1) * (abs(z) > hh - 0.02)
+        X, Z = x + bx, z + bz
+        u = (X * o + hw) / w            # 0 inner .. 1 outer
+        out.append((cx + X, y + wrap * u * u, cz + Z))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +247,7 @@ def build_hair():
         top.append([x, z])
     n, row_b = 20, 8                              # grid per face, hairline row on the side faces
     z_apex, cy = 2.47, 0.02
-    rx, ry_front, ry_back, q, pz = 0.6, 0.5, 0.53, 3.0, 2.4
+    rx, ry_front, ry_back, q, pz = 0.6, 0.485, 0.53, 3.0, 2.2
 
     def footprint(th):
         sx, sy = math.sin(th), -math.cos(th)
@@ -238,7 +261,10 @@ def build_hair():
         front = interp(fringe, fx)
         # sides: down to mid-ear in front of and behind the ear, arching over it
         ear = 1 - smoothstep(9, 17, abs(a - 92))
-        side, back = EAR_MID + (EAR_TOP + 0.02 - EAR_MID) * ear, 1.44
+        # nape: rounded, lowest at the centre, rising behind the ears
+        back_c = 1 - (180 - a) / 50                    # 1 at the back centre, 0 at 130°
+        back = 1.58 - 0.2 * max(0.0, back_c) ** 0.7
+        side = EAR_MID + (EAR_TOP + 0.02 - EAR_MID) * ear
         w_side = smoothstep(45, 62, a) * (1 - smoothstep(118, 145, a))
         w_back = smoothstep(118, 145, a)
         w_front = 1 - w_side - w_back
@@ -257,10 +283,22 @@ def build_hair():
         w_front = 1 - smoothstep(40, 75, a)
         xs = p.x + (p.x + 0.25) * 0.4 * h               # locks diverge from the parting going up
         lobe = (fr_hi - interp(fringe, xs)) / max(1e-6, fr_hi - fr_lo)   # 1 = lobe, 0 = notch
-        fringe_vol = w_front * lobe ** 1.5 * 0.055 * (1 - h) ** 1.2
-        wave = (1 - w_front) * 0.024 * (1 - h) ** 1.2 * (0.5 + 0.5 * math.cos(th * 7 + 3.5 * h))
-        crown = 0.018 * smoothstep(0.45, 0.9, h) * (0.5 + 0.5 * math.cos(th * 5 + 2.0 + 4 * h))
-        return out * (fringe_vol + wave + crown) + Vector((0, 0, -0.25 * fringe_vol))
+        # locks: strongest a little above the hairline (no visor over the forehead)
+        rise = smoothstep(0.0, 0.18, h)
+        fringe_vol = w_front * lobe ** 1.5 * 0.05 * rise * (1 - h) ** 0.9
+        wave = (1 - w_front) * 0.02 * (1 - h) ** 1.2 * (0.5 + 0.5 * math.cos(th * 7 + 3.5 * h))
+        # shaped masses from the drawing: left lobe, right "hump" (with the dip
+        # between it and the dome), round crown and occiput
+        lumps = 0.0
+        for c, r, amp in (((-0.47, -0.05, 2.12), 0.2, 0.045), ((0.43, -0.12, 2.24), 0.17, 0.05),
+                          ((0.0, 0.05, 2.42), 0.28, 0.035), ((0.0, 0.42, 1.95), 0.3, 0.04),
+                          ((0.3, -0.25, 2.31), 0.07, -0.025)):
+            d2 = (p - Vector(c)).length_squared
+            lumps += amp * math.exp(-d2 / (r * r))
+        # parting groove running back from the notch at x = -0.25
+        groove = -0.02 * math.exp(-((p.x + 0.25 + 0.1 * h) ** 2) / 0.0025) * smoothstep(0.05, 0.3, h) * (1 - h)
+        radial = (p - Vector((0, cy, 1.75))).normalized()
+        return out * (fringe_vol + wave) + radial * (lumps + groove) + Vector((0, 0, -0.15 * fringe_vol))
 
     bm = cube_sphere(n)                           # unit sphere, cube topology
     eps = 1e-4
@@ -376,18 +414,18 @@ def build_glasses():
     gy = FACE_FRONT_Y - 0.075
     out = []
     for side, tag in ((-1, 'R'), (1, 'L')):
-        out.append(tube(f'Frame.{tag}', rounded_rect_path(side * LENS_X, LENS_Z, LENS_W, LENS_H, gy, 0.05), FRAME_R,
+        out.append(tube(f'Frame.{tag}', rounded_rect_path(side * LENS_X, LENS_Z, LENS_W, LENS_H, gy, side), FRAME_R,
                         'Glasses', cyclic=True, sides=6))
         # hinge block at the top outer corner (carries the rivet), as drawn
         hx = side * (LENS_X + LENS_W / 2 + 0.035)
-        hinge = superellipsoid(f'Hinge.{tag}', (hx, gy, LENS_Z + LENS_H / 2 - 0.03), (0.05, 0.03, 0.035), 'Glasses',
+        hinge = superellipsoid(f'Hinge.{tag}', (hx, gy + 0.045, LENS_Z + LENS_H / 2 - 0.03), (0.05, 0.03, 0.035), 'Glasses',
                                power=4.0, n=1, comp=1.2)
         subdivide(hinge, 1)
         apply_all(hinge)
         out.append(hinge)
-        out.append(tube(f'Temple.{tag}', [(hx + side * 0.03, gy + 0.02, 1.71), (side * 0.55, gy + 0.12, 1.71),
+        out.append(tube(f'Temple.{tag}', [(hx + side * 0.03, gy + 0.065, 1.71), (side * 0.55, gy + 0.14, 1.71),
                                           (side * 0.58, 0.02, 1.68)], 0.017, 'Glasses', cyclic=False, sides=6))
-        rv = superellipsoid(f'Rivet.{tag}', (hx + side * 0.012, gy - 0.032, LENS_Z + LENS_H / 2 - 0.03),
+        rv = superellipsoid(f'Rivet.{tag}', (hx + side * 0.012, gy + 0.045 - 0.032, LENS_Z + LENS_H / 2 - 0.03),
                             (0.014, 0.008, 0.014), 'Rivet', n=1, comp=1.3)
         subdivide(rv, 1)
         apply_all(rv)
