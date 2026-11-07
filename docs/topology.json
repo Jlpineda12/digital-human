@@ -1,10 +1,10 @@
 {
- "faces": 2594,
+ "faces": 3124,
  "triangles": 0,
  "ngons": 0,
  "objects": {
   "Head": 384,
-  "Hair": 960,
+  "Hair": 1488,
   "Cowlick.A": 96,
   "Cowlick.B": 96,
   "Nose": 96,
@@ -25,6 +25,6 @@
   "Bridge": 6,
   "Neck": 16,
   "Shirt": 384,
-  "FaceCanvas": 98
+  "FaceCanvas": 100
  }
 }

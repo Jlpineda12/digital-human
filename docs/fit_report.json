@@ -1,14 +1,14 @@
 {
  "pelo": {
-  "IoU": 0.922,
-  "desfase_centroide_BU": 0.008
+  "IoU": 0.883,
+  "desfase_centroide_BU": 0.004
  },
  "nariz": {
   "IoU": 0.834,
   "desfase_centroide_BU": 0.002
  },
  "silueta": {
-  "IoU": 0.881,
+  "IoU": 0.876,
   "desfase_centroide_BU": 0.006
  }
 }

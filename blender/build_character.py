@@ -16,7 +16,7 @@ Modeling rules
 Outputs
   assets/models/jose.glb    meshes + morph targets (cheeks_up, squash)
   assets/models/face.json   UV layout of the face canvas (eyes, mouth) + palette
-  docs/blender_render*.png  toon + Grease Pencil Line Art verification (--render)
+  docs/blender_render*.png  flat toon verification renders + ortho fit check (--render)
 
 Units: 1 BU = 500 px of the drawing. Face looks towards -Y.
 """
@@ -35,7 +35,7 @@ PROFILE = json.load(open(os.path.join(ROOT, 'blender', 'reference_profiles.json'
 
 PALETTE = {
     'Skin': 'ffb59c', 'SkinShadow': 'e5a991', 'EarInner': 'e9a193', 'Nose': 'f58476',
-    'Hair': '363636', 'Glasses': '353736', 'Rivet': 'ffb8a8', 'Shirt': '9b322c',
+    'Neck': 'ffb59c', 'Hair': '363636', 'Glasses': '353736', 'Rivet': 'ffb8a8', 'Shirt': '9b322c',
     'Mouth': 'aa2923', 'Pupil': '363636', 'EyeWhite': 'ffffff', 'Lens': 'ffffff',
 }
 
@@ -182,7 +182,13 @@ def build_head():
     """Superellipsoid with p=4: its width per height reproduces the measured
     face (0.53 / 0.49 / 0.43 at z 1.3 / 1.2 / 1.12 vs 0.537 / 0.496 / 0.42)."""
     zc, rz, ry, a, p = 1.67, 0.62, 0.45, 0.545, 4.0
-    head = superellipsoid('Head', (0, 0, zc), (a, ry, rz), 'Skin', power=p, n=4, comp=1.03)
+
+    def shape(co):
+        z = co.z + zc
+        if z > 1.95:   # lower the cranium: it lives under the hair and must never poke through
+            co = Vector((co.x, co.y, 1.95 - zc + (z - 1.95) * 0.55))
+        return co
+    head = superellipsoid('Head', (0, 0, zc), (a, ry, rz), 'Skin', power=p, n=4, comp=1.03, shape=shape)
     subdivide(head, 1)
     apply_all(head)
     return head
@@ -203,15 +209,20 @@ def build_hair():
     just above the ears on the sides and the nape at the back. The front
     silhouette is then re-fitted to the measured hair top.
     """
-    # sideburns run straight down to the glasses
-    fringe = [[x, 1.79 if abs(x) > 0.42 else z] for x, z in PROFILE['hair_bottom']]
+    # sideburns run down to mid-ear height (z 1.61) at the face edges
+    EAR_MID, EAR_TOP = 1.61, 1.76
+
+    def sideburn(x, z):
+        return z if abs(x) <= 0.42 else z + (EAR_MID - z) * smoothstep(0.42, 0.5, abs(x))
+    fringe = [[x, sideburn(x, 1.79 if abs(x) > 0.42 else z)] for x, z in PROFILE['hair_bottom']]
+    fringe += [[-0.6, EAR_MID], [0.6, EAR_MID]]
     top = []
     for x, z in PROFILE['hair_top']:            # cowlick bump removed: tufts are separate
         if -0.47 < x < -0.24:
             k = (x + 0.47) / 0.23
             z = 2.2 + (2.355 - 2.2) * (1 - (1 - k) ** 2)
         top.append([x, z])
-    n, row_b = 16, 6                              # grid per face, hairline row on the side faces
+    n, row_b = 20, 8                              # grid per face, hairline row on the side faces
     z_apex, cy = 2.47, 0.02
     rx, ry_front, ry_back, q, pz = 0.6, 0.5, 0.53, 3.0, 2.4
 
@@ -225,11 +236,31 @@ def build_hair():
         fx, _ = footprint(th)
         a = abs(math.degrees(th))
         front = interp(fringe, fx)
-        side, back = 1.76, 1.44
-        w_side = smoothstep(38, 62, a) * (1 - smoothstep(118, 145, a))
+        # sides: down to mid-ear in front of and behind the ear, arching over it
+        ear = 1 - smoothstep(9, 17, abs(a - 92))
+        side, back = EAR_MID + (EAR_TOP + 0.02 - EAR_MID) * ear, 1.44
+        w_side = smoothstep(45, 62, a) * (1 - smoothstep(118, 145, a))
         w_back = smoothstep(118, 145, a)
         w_front = 1 - w_side - w_back
         return front * w_front + side * w_side + back * w_back
+
+    fr_vals = [z for x, z in fringe if abs(x) < 0.42]
+    fr_lo, fr_hi = min(fr_vals), max(fr_vals)
+
+    def locks(p, th, h):
+        """Natural hair volume: clumps that start at each fringe lobe and fan out
+        from the parting towards the crown (the notches become grooves between
+        locks), plus soft waves on the sides and the back."""
+        a = abs(math.degrees(th))
+        out = Vector((p.x, p.y - cy, 0.0))
+        out = out.normalized() if out.length > 1e-6 else Vector((0, -1, 0))
+        w_front = 1 - smoothstep(40, 75, a)
+        xs = p.x + (p.x + 0.25) * 0.4 * h               # locks diverge from the parting going up
+        lobe = (fr_hi - interp(fringe, xs)) / max(1e-6, fr_hi - fr_lo)   # 1 = lobe, 0 = notch
+        fringe_vol = w_front * lobe ** 1.5 * 0.055 * (1 - h) ** 1.2
+        wave = (1 - w_front) * 0.024 * (1 - h) ** 1.2 * (0.5 + 0.5 * math.cos(th * 7 + 3.5 * h))
+        crown = 0.018 * smoothstep(0.45, 0.9, h) * (0.5 + 0.5 * math.cos(th * 5 + 2.0 + 4 * h))
+        return out * (fringe_vol + wave + crown) + Vector((0, 0, -0.25 * fringe_vol))
 
     bm = cube_sphere(n)                           # unit sphere, cube topology
     eps = 1e-4
@@ -250,24 +281,27 @@ def build_hair():
         horiz = max(0.0, math.cos(lam)) ** (2 / pz)
         zb = hairline(th)
         z = zb + (z_apex - zb) * max(0.0, math.sin(lam)) ** (2 / pz)
-        v.co = Vector((fx * horiz, fy * horiz + cy, z))
+        p = Vector((fx * horiz, fy * horiz + cy, z))
+        v.co = p + locks(p, th, h)
         v.tag = h <= eps
     # drop everything below the hairline row (cube rows < row_b)
     bottom = [f for f in bm.faces if all(v.tag for v in f.verts) or
               sum(1 for v in f.verts if v.co.z < hairline(math.atan2(v.co.x, -(v.co.y - cy))) - 1e-6) > 0]
     bmesh.ops.delete(bm, geom=bottom, context='FACES')
     bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
-    # thickness lip: extrude the open hairline edge inwards (towards the skull)
-    edges = [e for e in bm.edges if e.is_boundary]
-    ext = bmesh.ops.extrude_edge_only(bm, edges=edges)
-    for v in [e for e in ext['geom'] if isinstance(e, bmesh.types.BMVert)]:
-        d = Vector((v.co.x, v.co.y - cy, 0.0))
-        v.co = v.co - d.normalized() * 0.05 + Vector((0, 0, 0.02))
+    # curled tips: two inward extrusions of the hairline (roll under, then up
+    # towards the skull) give the edge a rounded, natural thickness
+    for inward, lift in ((0.022, -0.012), (0.035, 0.04)):
+        edges = [e for e in bm.edges if e.is_boundary]
+        ext = bmesh.ops.extrude_edge_only(bm, edges=edges)
+        for v in [e for e in ext['geom'] if isinstance(e, bmesh.types.BMVert)]:
+            d = Vector((v.co.x, v.co.y - cy, 0.0))
+            v.co = v.co - d.normalized() * inward + Vector((0, 0, lift))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
     hair = to_object('Hair', bm, 'Hair')
     # re-fit the front silhouette (max z per x) to the measured hair top
     # (one scale factor per x, smoothed across x so the crown stays ripple-free)
-    zb = 1.76
+    zb = 1.62
     bins = {}
     for v in hair.data.vertices:
         bins.setdefault(round(v.co.x * 25), []).append(v.co.z)
@@ -275,7 +309,7 @@ def build_hair():
     raw = [min(1.25, max(0.8, (interp(top, k / 25) - zb) / max(1e-3, max(bins[k]) - zb))) for k in keys]
     fac = []
     for i in range(len(keys)):
-        win = raw[max(0, i - 3):i + 4]
+        win = raw[max(0, i - 1):i + 2]
         fac.append([keys[i] / 25, sum(win) / len(win)])
     for v in hair.data.vertices:
         if v.co.z > zb:
@@ -288,12 +322,12 @@ def build_hair():
 def build_cowlick():
     """Two leaf-shaped tufts on the top-left, as in the drawing."""
     tufts = []
-    for name, c, r, ry in (('Cowlick.A', (-0.30, -0.02, 2.31), (0.055, 0.04, 0.1), 18),
-                           ('Cowlick.B', (-0.405, -0.02, 2.25), (0.085, 0.04, 0.05), -12)):
-        def shape(co, rr=r):
-            # pinch the tip: leaf profile
+    for name, c, r, ry, bend in (('Cowlick.A', (-0.30, -0.02, 2.31), (0.055, 0.04, 0.1), 18, 0.05),
+                                 ('Cowlick.B', (-0.405, -0.02, 2.25), (0.085, 0.04, 0.05), -12, -0.04)):
+        def shape(co, rr=r, bend=bend):
+            # leaf profile: pinched tip that curls sideways
             t = max(0.0, co.z / (rr[2] * 1.15))
-            return Vector((co.x * (1 - 0.7 * t), co.y * (1 - 0.4 * t), co.z * (1 + 0.25 * t)))
+            return Vector((co.x * (1 - 0.7 * t) + bend * t * t, co.y * (1 - 0.4 * t), co.z * (1 + 0.25 * t)))
         ob = superellipsoid(name, c, r, 'Hair', power=2.0, n=2, rot=(0, math.radians(ry), 0), shape=shape, comp=1.15)
         subdivide(ob, 1)
         apply_all(ob)
@@ -381,7 +415,7 @@ def build_body():
             poly.use_smooth = True
         apply_all(ob)
         return ob
-    neck = cylinder('Neck', 0.27, 0.62, 1.12, 'Skin')
+    neck = cylinder('Neck', 0.27, 0.62, 1.12, 'Neck')   # own material: it receives the head's shadow
     # no painted band: the head casts the shadow under the chin (Blender + web)
 
     def shape(co):
@@ -512,7 +546,7 @@ def export(objs):
 
 
 # ---------------------------------------------------------------------------
-# Verification render: toon shading + 2D face texture + Grease Pencil Line Art
+# Verification render: flat toon shading + 2D face texture (no outlines)
 # ---------------------------------------------------------------------------
 def toonify():
     for m in bpy.data.materials:
@@ -520,6 +554,8 @@ def toonify():
             continue
         base = srgb(PALETTE[m.name])
         shade = tuple(c * 0.86 for c in base[:3]) + (1,)
+        if m.name in ('Skin', 'Neck'):  # the drawing's own shadow tone
+            shade = srgb(PALETTE['SkinShadow'])
         nt = m.node_tree
         nt.nodes.clear()
         out = nt.nodes.new('ShaderNodeOutputMaterial')
@@ -528,8 +564,13 @@ def toonify():
         ramp = nt.nodes.new('ShaderNodeValToRGB')
         ramp.color_ramp.interpolation = 'CONSTANT'
         ramp.color_ramp.elements[0].color = shade
-        ramp.color_ramp.elements[1].position = 0.3
+        # face stays flat and lit like the drawing; the neck gets the cast shadow
+        ramp.color_ramp.elements[1].position = 0.05 if m.name == 'Skin' else 0.3
         ramp.color_ramp.elements[1].color = base
+        if m.name == 'Hair':  # locks read through a deeper shadow and a soft highlight
+            ramp.color_ramp.elements[0].color = tuple(c * 0.45 for c in base[:3]) + (1,)
+            hi = ramp.color_ramp.elements.new(0.85)
+            hi.color = tuple(min(1.0, c * 2.1) for c in base[:3]) + (1,)
         em = nt.nodes.new('ShaderNodeEmission')
         nt.links.new(diff.outputs[0], s2r.inputs[0])
         nt.links.new(s2r.outputs[0], ramp.inputs[0])
@@ -699,25 +740,6 @@ def render(objs):
     sc.render.resolution_x, sc.render.resolution_y = 700, 1000
     sc.view_settings.view_transform = 'Standard'
     sc.render.film_transparent = False
-
-    # Grease Pencil Line Art over the whole scene (hand-drawn outline)
-    try:
-        bpy.ops.object.grease_pencil_add(type='LINEART_SCENE', location=(0, 0, 0))
-        gp = bpy.context.active_object
-        for mod in gp.modifiers:
-            for flag, val in (('use_contour', True), ('use_intersection', True), ('use_crease', False),
-                              ('use_material', False), ('use_edge_mark', False), ('use_loose', False)):
-                if hasattr(mod, flag):
-                    setattr(mod, flag, val)
-            if hasattr(mod, 'thickness'):
-                mod.thickness = 5
-            if hasattr(mod, 'radius'):
-                mod.radius = 0.006
-            if hasattr(mod, 'use_crease'):
-                mod.use_crease = False
-        print('grease pencil line art: OK', [m.type for m in gp.modifiers])
-    except Exception as exc:  # GP API differs across versions
-        print('grease pencil line art skipped:', exc)
 
     sc.render.filepath = os.path.join(ROOT, 'docs', 'blender_render.png')
     bpy.ops.render.render(write_still=True)
