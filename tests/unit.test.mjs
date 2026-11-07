@@ -1,6 +1,7 @@
 // node tests/unit.test.mjs  — pure-JS modules (no browser)
 import { VISEMES, PARAMS, wordToVisemes, buildTimeline, sampleTimeline, wordStartTime, tokenize } from '../src/lipsync/visemes.js';
 import { analyze, parseEmotionTag, takeSentences } from '../src/emotion/sentiment.js';
+import { Spring } from '../src/behavior/Behavior.js';
 
 let pass = 0;
 let fail = 0;
@@ -57,6 +58,14 @@ check(parseEmotionTag('[sorpr').pending === true, 'etiqueta incompleta en stream
 check(parseEmotionTag('Hola sin etiqueta').emotion === null, 'sin etiqueta');
 const s = takeSentences('Hola. Esto es una prueba! Y esto sigue');
 check(eq(s.sentences, ['Hola.', 'Esto es una prueba!']) && s.rest === 'Y esto sigue', 'frases completas para voz anticipada');
+
+console.log('\nMirada (resorte)');
+for (const dt of [1 / 120, 1 / 60, 1 / 20, 0.25, 1]) {
+  const sp = new Spring(0, 18);
+  let maxAbs = 0;
+  for (let i = 0; i < 400; i++) maxAbs = Math.max(maxAbs, Math.abs(sp.step(1, dt)));
+  check(maxAbs <= 1.0001 && Math.abs(sp.v - 1) < 1e-3, `estable y sin rebote con dt=${dt.toFixed(3)} s (máx ${maxAbs.toFixed(4)})`);
+}
 
 console.log(`\n${pass}/${pass + fail} OK`);
 process.exit(fail ? 1 : 0);

@@ -1,0 +1,13 @@
+{
+  "name": "digital-human",
+  "version": "1.0.0",
+  "description": "Humano digital 3D interactivo con lip-sync procedural, mirada, emociones e IA en el navegador",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/unit.test.mjs",
+    "e2e": "node tests/e2e.cjs",
+    "start": "python3 -m http.server 8080"
+  },
+  "author": "Jose Luis Pineda (Jlpineda12)",
+  "license": "MIT"
+}
