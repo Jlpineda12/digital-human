@@ -1,0 +1,30 @@
+{
+ "faces": 2594,
+ "triangles": 0,
+ "ngons": 0,
+ "objects": {
+  "Head": 384,
+  "Hair": 960,
+  "Cowlick.A": 96,
+  "Cowlick.B": 96,
+  "Nose": 96,
+  "Ear.R": 96,
+  "EarInner.R": 24,
+  "Ear.L": 96,
+  "EarInner.L": 24,
+  "Frame.R": 48,
+  "Hinge.R": 24,
+  "Temple.R": 12,
+  "Rivet.R": 24,
+  "Lens.R": 1,
+  "Frame.L": 48,
+  "Hinge.L": 24,
+  "Temple.L": 12,
+  "Rivet.L": 24,
+  "Lens.L": 1,
+  "Bridge": 6,
+  "Neck": 16,
+  "Shirt": 384,
+  "FaceCanvas": 98
+ }
+}
