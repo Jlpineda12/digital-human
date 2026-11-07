@@ -135,3 +135,5 @@ dialog::backdrop { background: rgba(58, 46, 46, 0.35); }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+.brand .beta { font-family: var(--ui); font-size: 11px; font-weight: 700; letter-spacing: 1px; background: var(--accent); color: #fff; padding: 3px 7px; border-radius: 6px; vertical-align: super; }

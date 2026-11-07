@@ -1,6 +1,6 @@
 {
   "name": "digital-human",
-  "version": "1.0.0",
+  "version": "0.9.0-beta",
   "description": "Humano digital 3D interactivo con lip-sync procedural, mirada, emociones e IA en el navegador",
   "type": "module",
   "scripts": {

@@ -2,17 +2,22 @@
 
 <img src="docs/demo.gif" alt="Jose, humano digital: habla con lip-sync, sigue el cursor y cambia de emoción" width="360">
 
-# 🗣️ Jose · Humano Digital
+# 🗣️ Jose · Humano Digital <sup>BETA</sup>
 
 **Un personaje 3D estilizado que conversa contigo en el navegador: lip-sync procedural en español, mirada que te sigue, parpadeo natural y emociones en tiempo real.**
 
 ![Three.js](https://img.shields.io/badge/Three.js-0.180-000?style=flat-square&logo=threedotjs)
 ![Blender](https://img.shields.io/badge/Blender-5.2-f5792a?style=flat-square&logo=blender&logoColor=white)
 ![Claude](https://img.shields.io/badge/IA-Claude-d97757?style=flat-square)
+![Versión](https://img.shields.io/badge/versión-0.9.0--beta-ff5d8f?style=flat-square)
 ![Tests](https://img.shields.io/badge/tests-48%20passing-39ff14?style=flat-square)
 ![Deps](https://img.shields.io/badge/build-sin%20bundler-00a88f?style=flat-square)
 
+[![Probar la beta](https://img.shields.io/badge/▶%20PROBAR%20LA%20BETA-ff5d8f?style=for-the-badge)](https://jlpineda12.github.io/digital-human/)
+
 </div>
+
+> 🧪 **Versión beta (0.9.0).** Gemelo digital de Jose Luis Pineda: un personaje 3D estilizado, modelado por código en Blender a partir de su propio dibujo y renderizado con Three.js, que conversa contigo en tiempo real en el navegador. Une **animación facial (morph targets + cara 2D procedural)**, **WebGL**, **IA multimodal** y **Web Speech**. Es una beta: la voz depende de las voces en español de tu navegador y algunas funciones (reconocimiento de voz, modo espejo) requieren Chrome o Edge. Se agradecen comentarios en *Issues*.
 
 ---
 
@@ -114,6 +119,13 @@ node tests/e2e.cjs       # 14 pruebas en Chromium real (servidor en :8095)
 ```
 
 La prueba de navegador comprueba que el modelo carga, que **la boca se abre y cambia de forma mientras habla**, que la cabeza sigue al cursor, que las pupilas quedan dentro del ojo, que parpadea solo, las 6 emociones, la versión móvil y que no hay errores de JavaScript.
+
+## 🗺️ Próximos pasos (hacia la 1.0)
+
+- Voz neuronal con análisis del audio real para el lip-sync (además de la línea de tiempo por fonemas).
+- Animación de brazos/hombros y gestos según la emoción.
+- Más expresiones y transiciones (enojo, vergüenza, risa).
+- Modo kiosco / pantalla completa para presentaciones.
 
 ## 👤 Autor
 
