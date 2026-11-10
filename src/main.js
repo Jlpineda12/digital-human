@@ -3,10 +3,13 @@ import * as THREE from 'three';
 import { Avatar, setupLights } from './avatar/Avatar.js';
 import { Behavior } from './behavior/Behavior.js';
 import { Doodles } from './fx/Doodles.js';
+import { PixelPass } from './fx/PixelPass.js';
 import { Voice, Listener } from './speech/Voice.js';
 import { MicLipSync } from './lipsync/MicLipSync.js';
 import { ClaudeBrain, DemoBrain } from './ai/brains.js';
-import { analyze, takeSentences } from './emotion/sentiment.js';
+import { analyze, takeSentences, takeGestureCues } from './emotion/sentiment.js';
+import { cueGesture } from './behavior/gestures.js';
+import { PROFILE } from './ai/profile.js';
 
 const $ = (s) => document.querySelector(s);
 const store = {
@@ -32,20 +35,28 @@ setupLights(scene);
 const avatar = new Avatar(scene);
 const behavior = new Behavior();
 const doodles = new Doodles($('#fx'));
+const pixel = new PixelPass(renderer);
 
 function resize() {
   const w = stage.clientWidth;
   const h = stage.clientHeight;
   renderer.setSize(w, h, false);
-  doodles.resize(w, h, Math.min(2, window.devicePixelRatio));
+  // pixel mode: ~220 virtual pixels tall whatever the screen, doodles at the same grain
+  pixel.pixelSize = Math.max(3, Math.round(h / 220));
+  pixel.setSize(w, h);
+  doodles.resize(w, h, pixel.enabled ? 2 / pixel.pixelSize : Math.min(2, window.devicePixelRatio));
   camera.aspect = w / h;
   // keep the bust framed on any aspect ratio
-  const dist = w / h < 0.9 ? 8.6 / Math.max(0.55, w / h) * 0.8 : 7.4;
-  camera.position.set(0, 1.62, dist);
-  camera.lookAt(0, 1.5, 0);
+  const dist = w / h < 0.9 ? 8.6 / Math.max(0.55, w / h) * 0.8 : 6.3;
+  camera.position.set(0, 1.66, dist);
+  camera.lookAt(0, 1.47, 0);
   camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
+
+// the page is pixel art only (the 3D toon render stays available for tests: ?toon)
+pixel.enabled = !new URLSearchParams(location.search).has('toon');
+document.body.classList.toggle('pixel-mode', pixel.enabled);
 resize();
 
 function toScreen(v) {
@@ -57,9 +68,24 @@ function toScreen(v) {
 // Voice, listening, mirror mode
 // ---------------------------------------------------------------------------
 let subtitleTimer = null;
+let spokenCount = 0;
+const sentenceCues = new Map();                 // spoken sentence -> gesture asked by the brain
 const voice = new Voice({
-  onSentence: (s) => { clearTimeout(subtitleTimer); doodles.setSubtitle(s); setState('speaking'); },
+  onSentence: (s) => {
+    spokenCount++;
+    $('#progress').style.width = `${Math.min(100, (spokenCount / Math.max(1, spokenCount + voice.queue.length)) * 100)}%`;
+    clearTimeout(subtitleTimer);
+    doodles.setSubtitle(s);
+    setState('speaking');
+    // body language for this sentence: the reply's own cue, else one read from the words
+    const cue = sentenceCues.get(s);
+    sentenceCues.delete(s);
+    const g = cue || cueGesture(s, 'jose');
+    if (g) behavior.gesture(g, 0.15);
+  },
   onIdle: () => {
+    spokenCount = 0;
+    $('#progress').style.width = '0%';
     subtitleTimer = setTimeout(() => doodles.setSubtitle(''), 1400);
     if (!busy) setState('idle');
     relaxLater();
@@ -95,56 +121,93 @@ function makeBrain() {
   const mode = store.get('dh.mode', 'demo');
   const key = sessionKey || store.get('dh.key', '');
   brain = mode === 'claude' && key ? new ClaudeBrain(key) : new DemoBrain();
-  $('#modeLabel').textContent = brain instanceof ClaudeBrain ? 'Claude · claude-opus-5-5' : 'Modo demo (sin API key)';
+  $('#modeLabel').textContent = brain instanceof ClaudeBrain ? 'Cerebro: Claude' : 'Cerebro: modo demo';
 }
 let sessionKey = '';
 
+// Questions are posted like comments; Jose's answer is a reply under each one.
+// Newest thread on top, as on an old video site.
+let thread = null;
 function addMsg(role, text = '') {
   const li = document.createElement('li');
   li.className = role;
-  li.textContent = text;
-  $('#log').appendChild(li);
-  $('#log').scrollTop = $('#log').scrollHeight;
+  const bot = role === 'bot';
+  li.innerHTML = `<div class="comment">${bot ? '<img class="ava" src="assets/pixel/avatar.png" alt="">' : '<span class="ava" aria-hidden="true">🙂</span>'}
+    <div><div class="meta"><b>${bot ? 'JoseDigital' : 'Tú'}</b>hace un momento <span class="emo"></span></div><div class="text"></div></div></div>`;
+  li.querySelector('.text').textContent = text;
+  if (role === 'user') {
+    const replies = document.createElement('ol');
+    replies.className = 'replies';
+    li.appendChild(replies);
+    $('#log').prepend(li);
+    thread = li;
+  } else if (thread) {
+    thread.querySelector('.replies').appendChild(li);
+    thread = null;
+  } else {
+    $('#log').prepend(li);
+  }
   return li;
 }
 
 const EMO_LABEL = { neutral: 'neutral', alegria: 'alegría', sorpresa: 'sorpresa', duda: 'duda', tristeza: 'tristeza', pensativo: 'pensativo' };
 
+let lastReply = '';
+const queued = [];
+let answered = 0;
 async function send(text) {
   text = text.trim();
-  if (!text || busy) return;
+  if (!text) return;
+  if (busy) { queued.push(text); return; }       // asked while he was answering: next in line
   busy = true;
   voice.stop();
   addMsg('user', text);
-  $('#suggest').style.display = 'none';
-  // react to what the user said while thinking
+  // react to what the user said while thinking: face + a gesture (tilt at a question, wave back…)
   const felt = analyze(text).emotion;
   setEmotion(felt === 'neutral' ? 'pensativo' : felt);
+  const heard = cueGesture(text, 'user');
+  if (heard) behavior.gesture(heard);
   setState('thinking');
   const li = addMsg('bot');
-  const tag = document.createElement('span');
-  tag.className = 'emo';
-  const body = document.createElement('span');
-  li.append(tag, body);
-  let pending = '';
+  const tag = li.querySelector('.emo');
+  const body = li.querySelector('.text');
+  li.scrollIntoView({ block: 'nearest' });
+  let raw = '';           // reply as streamed (may hold [gesto] cues)
+  let spoken = 0;         // chars of `raw` already handed to the voice
+  const speak = (final) => {
+    const { text: clean } = takeGestureCues(raw);
+    body.textContent = clean;
+    // sentences are cut on the raw text so each keeps its own cue
+    const { sentences, rest } = takeSentences(raw.slice(spoken));
+    const chunks = final && rest.trim() ? [...sentences, rest.trim()] : sentences;
+    spoken = final ? raw.length : raw.length - rest.length;
+    for (const chunk of chunks) {
+      const { text: s, gestures } = takeGestureCues(chunk);
+      const line = s.trim();
+      if (!line) { if (gestures[0]) behavior.gesture(gestures[0]); continue; }
+      if (gestures[0]) sentenceCues.set(line.split(/(?<=[.!?…])\s+/)[0].trim(), gestures[0]);
+      voice.say(line);                                 // start talking before the reply is complete
+    }
+  };
   try {
     for await (const ev of brain.reply(text)) {
       if (ev.type === 'emotion') {
         setEmotion(ev.value);
         tag.textContent = EMO_LABEL[ev.value] || ev.value;
+      } else if (ev.type === 'gesture') {
+        behavior.gesture(ev.value);
       } else if (ev.type === 'text') {
-        body.textContent += ev.delta;
-        pending += ev.delta;
-        const { sentences, rest } = takeSentences(pending);
-        pending = rest;
-        for (const s of sentences) voice.say(s);       // start talking before the reply is complete
-        $('#log').scrollTop = $('#log').scrollHeight;
+        raw += ev.delta;
+        speak(false);
       }
     }
   } finally {
-    if (pending.trim()) voice.say(pending.trim());
+    speak(true);
+    lastReply = takeGestureCues(raw).text.trim();
+    $('#answered').textContent = String(++answered);
     busy = false;
-    if (!voice.speaking) { setState('idle'); relaxLater(); }
+    if (queued.length) setTimeout(() => send(queued.shift()), 250);
+    else if (!voice.speaking) { setState('idle'); relaxLater(); }
   }
 }
 
@@ -155,6 +218,87 @@ $('#composer').addEventListener('submit', (e) => {
   send(v);
 });
 $('#suggest').addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') send(e.target.textContent); });
+$('#input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#composer').requestSubmit(); }
+});
+$('#searchForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const v = $('#search').value;
+  $('#search').value = '';
+  $('#comments').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  send(v);
+});
+
+// related "videos" = Jose's projects; clicking one asks him about it
+const THUMBS = { arcade: ['🕹️', '#2b1d4f'], forge: ['👾', '#1d3b4f'], lingo: ['🦜', '#1f4f2b'], melodia: ['🎸', '#4f1d2b'],
+  neurotext: ['🧠', '#3d2b4f'], gamevault: ['🗄️', '#4f3b1d'], threejs: ['🧊', '#1d2b4f'], avatar: ['🤓', '#4f1d1d'] };
+for (const p of PROFILE.proyectos) {
+  const li = document.createElement('li');
+  const [icon, color] = THUMBS[p.id] || ['📁', '#333'];
+  li.innerHTML = `<button type="button"><span class="thumb" style="--c:${color}">${icon}<small>PROYECTO</small></span>
+    <span><span class="t"></span><span class="d"></span></span></button>`;
+  li.querySelector('.t').textContent = p.nombre;
+  li.querySelector('.d').textContent = `por ${PROFILE.github} · ${p.texto.split('. ')[0].slice(0, 70)}…`;
+  li.querySelector('button').addEventListener('click', () => {
+    $('#comments').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    send(p.id === 'avatar' ? '¿Cómo estás hecho?' : `Cuéntame de ${p.nombre}`);
+  });
+  $('#relatedList').appendChild(li);
+}
+
+// player controls
+$('#playBtn').addEventListener('click', () => {
+  if (voice.speaking) { voice.stop(); return; }
+  voice.say(lastReply || 'Hola, soy Jose. Hazme una pregunta en los comentarios.');
+});
+const syncVoiceBtn = () => {
+  $('#voiceBtn').setAttribute('aria-pressed', String(voice.enabled));
+  $('#voiceBtn').textContent = voice.enabled ? '🔊' : '🔇';
+};
+$('#voiceBtn').addEventListener('click', () => {
+  voice.enabled = !voice.enabled;
+  store.set('dh.voiceOn', voice.enabled ? '1' : '0');
+  syncVoiceBtn();
+});
+$('#fsBtn').addEventListener('click', () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else $('#player').requestFullscreen?.().catch(() => {});
+});
+document.addEventListener('fullscreenchange', () => requestAnimationFrame(resize));
+
+// star rating: Jose reacts to it
+const RATING_LINES = { 1: ['tristeza', 'consolar', 'Auch. Prometo mejorar en la versión 1.0.'],
+  2: ['tristeza', 'encoger', 'Bueno, todavía soy una beta.'], 3: ['duda', 'ladear', 'Tres estrellas. Acepto el reto.'],
+  4: ['alegria', 'asentir', '¡Cuatro estrellas! Gracias.'], 5: ['alegria', 'reir', '¡Cinco estrellas! Se lo diré a Jose ya mismo.'] };
+function paintStars(n) {
+  document.querySelectorAll('#rating .stars button').forEach((b) => b.classList.toggle('lit', +b.dataset.star <= n));
+  $('#ratingText').textContent = n ? `Tu calificación: ${n} de 5` : 'Califica a Jose';
+}
+paintStars(+store.get('dh.rating', '0'));
+document.querySelectorAll('#rating .stars button').forEach((b) => {
+  b.addEventListener('mouseenter', () => paintStars(+b.dataset.star));
+  b.addEventListener('mouseleave', () => paintStars(+store.get('dh.rating', '0')));
+  b.addEventListener('click', () => {
+    const n = +b.dataset.star;
+    store.set('dh.rating', String(n));
+    paintStars(n);
+    const [emo, gesture, line] = RATING_LINES[n];
+    setEmotion(emo);
+    behavior.gesture(gesture);
+    voice.stop();
+    voice.say(line);
+    relaxLater();
+  });
+});
+
+$('#shareBtn').addEventListener('click', async () => {
+  const url = location.href.split('#')[0];
+  try {
+    if (navigator.share) await navigator.share({ title: document.title, url });
+    else { await navigator.clipboard.writeText(url); $('#shareBtn').textContent = '✔ Enlace copiado'; }
+  } catch { /* cancelled */ }
+  setTimeout(() => { $('#shareBtn').textContent = '🔗 Compartir'; }, 2000);
+});
 
 document.querySelectorAll('.emotions button').forEach((b) => b.addEventListener('click', () => {
   const lines = { neutral: 'Mmm.', alegria: '¡Qué alegría verte por aquí!', sorpresa: '¡No puede ser! ¿En serio?',
@@ -183,11 +327,12 @@ $('#micBtn').addEventListener('click', () => {
 
 // mirror mode: lip-sync to your own voice
 $('#mirrorBtn').addEventListener('click', async () => {
-  if (mic.active) { mic.stop(); $('#mirrorBtn').classList.remove('on'); setState('idle'); return; }
+  if (mic.active) { mic.stop(); $('#mirrorBtn').classList.remove('on'); $('#mirrorBtn').textContent = '🪞 Modo espejo'; setState('idle'); return; }
   try {
     voice.stop();
     await mic.start();
     $('#mirrorBtn').classList.add('on');
+    $('#mirrorBtn').textContent = '⏹ Detener espejo';
     setState('mirror');
   } catch {
     addMsg('bot', 'No pude acceder al micrófono. Revisa los permisos del navegador.');
@@ -225,6 +370,7 @@ dlg.addEventListener('close', () => {
   if ($('#rememberKey').checked && sessionKey) store.set('dh.key', sessionKey); else store.del('dh.key');
   voice.rate = parseFloat($('#rate').value);
   voice.enabled = $('#voiceOn').checked;
+  syncVoiceBtn();
   const v = (voice.voices || []).find((x) => x.name === $('#voiceSel').value);
   if (v) voice.voice = v;
   store.set('dh.rate', voice.rate);
@@ -233,6 +379,7 @@ dlg.addEventListener('close', () => {
 });
 voice.rate = parseFloat(store.get('dh.rate', '1.05'));
 voice.enabled = store.get('dh.voiceOn', '1') === '1';
+syncVoiceBtn();
 makeBrain();
 
 // ---------------------------------------------------------------------------
@@ -261,7 +408,7 @@ function frame(nowMs) {
     avatar.setHead(out.head.yaw, out.head.pitch, out.head.roll);
     avatar.setMorph('cheeks_up', out.morphs.cheeks_up);
     avatar.setMorph('squash', out.morphs.squash);
-    avatar.root.position.y = out.breathe * 0.6;
+    avatar.root.position.y = out.breathe * 0.6 + out.lift;
     avatar.drawFace(out.face, t);
     const c = toScreen(avatar.headPoint(0, 0.55, 0));
     const e = toScreen(avatar.headPoint(0.62, 0.55, 0));
@@ -269,7 +416,7 @@ function frame(nowMs) {
     doodles.draw({ time: t, dt, head: headScreen, thinking: behavior.state === 'thinking',
       listening: behavior.state === 'listening' || mic.active, level: mic.level });
   }
-  renderer.render(scene, camera);
+  pixel.render(scene, camera);
   requestAnimationFrame(frame);
 }
 
@@ -278,7 +425,8 @@ avatar.load('assets/models/jose.glb', 'assets/models/face.json').then(() => {
   window.__dh.ready = true;
   setTimeout(() => {
     setEmotion('alegria');
-    voice.say('¡Hola! Soy Jose, versión digital. Mueve el ratón y te sigo con la mirada.');
+    behavior.gesture('saludar');
+    voice.say('¡Hola! Soy Jose, bueno, mi versión digital. Pregúntame lo que quieras sobre mí: mis proyectos, mi carrera o mis metas.');
   }, 600);
 }).catch((err) => {
   $('#loading').textContent = 'No se pudo cargar el modelo 3D.';
@@ -287,4 +435,4 @@ avatar.load('assets/models/jose.glb', 'assets/models/face.json').then(() => {
 requestAnimationFrame(frame);
 
 // test / debug handle
-window.__dh = { ready: false, behavior, voice, avatar, send, setEmotion, doodles };
+window.__dh = { ready: false, behavior, voice, avatar, send, setEmotion, doodles, pixel, scene, camera, get busy() { return busy; } };

@@ -23,6 +23,7 @@ const check = (c, n) => { if (c) { pass++; console.log(`  PASS  ${n}`); } else {
   await page.goto(base);
   await page.waitForFunction(() => window.__dh && window.__dh.ready, null, { timeout: 30000 });
   check(true, 'modelo GLB cargado y listo');
+  check(await page.evaluate(() => window.__dh.pixel.enabled && document.body.classList.contains('pixel-mode')), 'la página arranca en modo pixel art');
   const info = await page.evaluate(() => {
     const a = window.__dh.avatar;
     let meshes = 0;
@@ -64,6 +65,51 @@ const check = (c, n) => { if (c) { pass++; console.log(`  PASS  ${n}`); } else {
   check(emo === 'alegria', `emoción desde la respuesta (saludo → alegría): ${emo}`);
   await page.screenshot({ path: path.join(out, 'talking.png') });
 
+  // pixel art: the player shows only colours of Jose's palette (+ the page backdrop)
+  const colours = await page.evaluate(async () => {
+    const { JOSE_PALETTE } = await import('./src/fx/PixelPass.js');
+    const gl = document.querySelector('#gl');
+    const c = document.createElement('canvas');
+    c.width = 160; c.height = 120;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    window.__dh.pixel.render(window.__dh.scene, window.__dh.camera);
+    g.drawImage(gl, 0, 0, 160, 120);
+    const d = g.getImageData(0, 0, 160, 120).data;
+    const pal = new Set(JOSE_PALETTE);
+    let inPal = 0;
+    let opaque = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 255) continue;
+      opaque++;
+      const hex = [d[i], d[i + 1], d[i + 2]].map((v) => v.toString(16).padStart(2, '0')).join('');
+      if (pal.has(hex)) inPal++;
+    }
+    return { ratio: inPal / Math.max(1, opaque), opaque };
+  });
+  check(colours.opaque > 500 && colours.ratio > 0.97, `render pixel con la paleta de Jose (${(colours.ratio * 100).toFixed(1)} % de ${colours.opaque} px)`);
+
+  // gestures: a question makes him tilt his head, the answer comes as a reply comment
+  await page.waitForFunction(() => !window.__dh.busy, null, { timeout: 60000 });
+  await page.evaluate(() => window.__dh.voice.stop());
+  await page.fill('#input', '¿Cuántos años tienes y qué estudias?');
+  await page.press('#input', 'Enter');
+  const seen = new Set(await page.evaluate(() => new Promise((resolve) => {
+    const names = new Set();
+    const t0 = performance.now();
+    (function poll() {
+      for (const g of window.__dh.behavior.gestures) names.add(g.name);
+      if (performance.now() - t0 > 2500) resolve([...names]); else requestAnimationFrame(poll);
+    })();
+  })));
+  check(seen.size > 0, `gestos al conversar: ${[...seen].join(', ')}`);
+  await page.waitForTimeout(1200);
+  const reply = await page.textContent('#log > li:first-child li.bot');
+  check(/22 años/.test(reply) && /Ingeniería en Multimedia/.test(reply), 'responde edad y carrera en un mismo comentario');
+  check(await page.$$eval('#relatedList li', (l) => l.length) >= 6, 'proyectos relacionados en la barra lateral');
+  await page.click('#rating .stars button[data-star="5"]');
+  check(await page.$$eval('#rating .lit', (l) => l.length) === 5, 'calificación con estrellas');
+
   // gaze follows the pointer
   await page.evaluate(() => window.__dh.voice.stop());
   await page.mouse.move(80, 120);
@@ -84,10 +130,11 @@ const check = (c, n) => { if (c) { pass++; console.log(`  PASS  ${n}`); } else {
 
   // emotions
   for (const e of ['neutral', 'alegria', 'sorpresa', 'duda', 'tristeza', 'pensativo']) {
-    await page.evaluate((x) => { window.__dh.voice.stop(); window.__dh.setEmotion(x); }, e);
-    await page.mouse.move(640, 380);
+    await page.evaluate((x) => { window.__dh.voice.stop(); window.__dh.doodles.setSubtitle(''); window.__dh.setEmotion(x); }, e);
+    const box = await page.locator('#stage').boundingBox();
+    await page.mouse.move(box.x + box.width * 0.52, box.y + box.height * 0.42);
     await page.waitForTimeout(700);
-    await page.screenshot({ path: path.join(out, `emo-${e}.png`), clip: { x: 220, y: 60, width: 520, height: 640 } });
+    await page.locator('#stage').screenshot({ path: path.join(out, `emo-${e}.png`) });
   }
   check(true, 'capturas de las 6 emociones');
 

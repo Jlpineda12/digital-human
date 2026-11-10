@@ -157,6 +157,7 @@ export class Doodles {
   bubble(x, y, r) {
     const { ctx } = this;
     const vw = this.canvas.width / this.dpr;
+    if (vw < 560) { this.caption(vw); return; }   // small player: TV-style captions, the face stays visible
     const W = Math.min(vw - 24, 320);
     ctx.font = '600 18px "Patrick Hand", "Comic Sans MS", system-ui, sans-serif';
     const lines = [];
@@ -197,6 +198,31 @@ export class Doodles {
     ctx.globalAlpha = a;
     ctx.fillStyle = '#3a2e2e';
     lines.forEach((l, i) => ctx.fillText(l, bx + 18, by + 28 + i * 24));
+    ctx.globalAlpha = 1;
+  }
+
+  /** Closed-caption bar at the bottom of the player (used on narrow screens). */
+  caption(vw) {
+    const { ctx } = this;
+    const vh = this.canvas.height / this.dpr;
+    ctx.font = 'bold 15px Arial, Helvetica, sans-serif';
+    const W = vw - 32;
+    const lines = [];
+    let line = '';
+    for (const w of this.subtitle.split(' ')) {
+      const t = line ? `${line} ${w}` : w;
+      if (ctx.measureText(t).width > W - 16 && line) { lines.push(line); line = w; } else line = t;
+    }
+    if (line) lines.push(line);
+    const shown = lines.slice(-2);
+    const h = shown.length * 20 + 10;
+    ctx.globalAlpha = Math.min(1, this.subtitleT * 5);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
+    ctx.fillRect(16, vh - h - 10, W, h);
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    shown.forEach((l, i) => ctx.fillText(l, vw / 2, vh - h - 10 + 21 + i * 20));
+    ctx.textAlign = 'left';
     ctx.globalAlpha = 1;
   }
 }

@@ -43,6 +43,7 @@ FACE_FRONT_Y = -0.45
 # measured on the drawing (blender/measure_fit.py): stroke centres, stroke 0.045 BU
 LENS_W, LENS_H, LENS_Z, LENS_X, FRAME_R = 0.40, 0.246, 1.627, 0.24, 0.023
 DECAL = dict(x0=-0.53, x1=0.53, z0=1.0, z1=1.95)
+FACE_BOLD = 1.0   # stroke weight of the static face drawing (the pixel bake uses thicker lines)
 
 
 def srgb(hex_):
@@ -210,7 +211,10 @@ def build_head():
         z = co.z + zc
         if z > 1.95:   # lower the cranium: it lives under the hair and must never poke through
             co = Vector((co.x, co.y, 1.95 - zc + (z - 1.95) * 0.55))
-        return co
+        # forehead recedes a little under the fringe, so the flat hair quads
+        # never graze the skin (that showed as tiny skin bumps along the fringe)
+        k = 1 - 0.05 * smoothstep(1.78, 1.92, z)
+        return Vector((co.x * k, co.y * k, co.z))
     head = superellipsoid('Head', (0, 0, zc), (a, ry, rz), 'Skin', power=p, n=4, comp=1.03, shape=shape)
     subdivide(head, 1)
     apply_all(head)
@@ -220,6 +224,36 @@ def build_head():
 def smoothstep(e0, e1, x):
     t = max(0.0, min(1.0, (x - e0) / (e1 - e0)))
     return t * t * (3 - 2 * t)
+
+
+def scallop_fringe(step=0.005):
+    """Front hairline as in the drawing: rounded locks hanging between pointed
+    partings (scallops). Cusps and lock bottoms are the measured points of
+    blender/reference_profiles.json (hair_bottom), with the noise removed:
+    each lock is a quarter-ellipse on both sides of its lowest point, so the
+    bottom is round and the partings come to a point."""
+    # (x, z) alternating cusp / lock bottom, left temple -> right temple
+    # (partings are drawn ~0.02 higher than measured: at screen size the
+    # points read like in the drawing instead of fading into a straight line)
+    keys = [(-0.60, 1.786), (-0.445, 1.786), (-0.415, 1.94), (-0.37, 1.886), (-0.25, 1.99),
+            (-0.075, 1.876), (0.01, 1.975), (0.265, 1.874), (0.405, 1.915), (0.445, 1.786), (0.60, 1.786)]
+    pts = []
+    x = keys[0][0]
+    while x <= keys[-1][0] + 1e-9:
+        for (x0, z0), (x1, z1) in zip(keys, keys[1:]):
+            if x0 <= x <= x1:
+                break
+        if z0 > z1:      # cusp -> bottom: falls steeply from the point, flattens at the bottom
+            u = (x1 - x) / (x1 - x0)
+            z = z1 + (z0 - z1) * (0.65 * (1 - math.sqrt(max(0.0, 1 - u * u))) + 0.35 * u * u)
+        elif z1 > z0:    # bottom -> cusp
+            u = (x - x0) / (x1 - x0)
+            z = z0 + (z1 - z0) * (0.65 * (1 - math.sqrt(max(0.0, 1 - u * u))) + 0.35 * u * u)
+        else:
+            z = z0
+        pts.append([round(x, 4), z])
+        x += step
+    return pts
 
 
 def build_hair():
@@ -237,15 +271,14 @@ def build_hair():
 
     def sideburn(x, z):
         return z if abs(x) <= 0.42 else z + (EAR_MID - z) * smoothstep(0.42, 0.5, abs(x))
-    fringe = [[x, sideburn(x, 1.79 if abs(x) > 0.42 else z)] for x, z in PROFILE['hair_bottom']]
-    fringe += [[-0.6, EAR_MID], [0.6, EAR_MID]]
+    fringe = [[x, sideburn(x, z)] for x, z in scallop_fringe()]
     top = []
     for x, z in PROFILE['hair_top']:            # cowlick bump removed: tufts are separate
         if -0.47 < x < -0.24:
             k = (x + 0.47) / 0.23
             z = 2.2 + (2.355 - 2.2) * (1 - (1 - k) ** 2)
         top.append([x, z])
-    n, row_b = 20, 8                              # grid per face, hairline row on the side faces
+    n, row_b = 24, 10                              # grid per face, hairline row on the side faces
     z_apex, cy = 2.47, 0.02
     rx, ry_front, ry_back, q, pz = 0.6, 0.485, 0.53, 3.0, 2.2
 
@@ -262,8 +295,10 @@ def build_hair():
         # sides: down to mid-ear in front of and behind the ear, arching over it
         ear = 1 - smoothstep(9, 17, abs(a - 92))
         # nape: rounded, lowest at the centre, rising behind the ears
-        back_c = 1 - (180 - a) / 50                    # 1 at the back centre, 0 at 130°
-        back = 1.58 - 0.2 * max(0.0, back_c) ** 0.7
+        phi = 180 - a                                  # 0 at the back centre
+        u = ((phi + 14) % 28) / 14 - 1                 # -1..1 across each lock
+        lock = math.sqrt(max(0.0, 1 - u * u))          # 1 = lock tip, 0 = parting
+        back = 1.62 - 0.13 * smoothstep(55, 0, phi) - 0.05 * lock * smoothstep(48, 20, phi)
         side = EAR_MID + (EAR_TOP + 0.02 - EAR_MID) * ear
         w_side = smoothstep(45, 62, a) * (1 - smoothstep(118, 145, a))
         w_back = smoothstep(118, 145, a)
@@ -637,11 +672,11 @@ def face_texture(path, size=512):
         r = (e['v1'] - e['v0']) * 0.36
         pupil = ((u - cx) ** 2 + ((v - lid) * 1.0) ** 2 < r * r) & (v < lid) & inside
         put(pupil, lay['palette']['Pupil'])
-        put(inside & (abs(v - lid) < 0.006), '#2a2a2a')
+        put(inside & (abs(v - lid) < 0.006 * FACE_BOLD), '#2a2a2a')
     m = lay['mouth']
     x = (u - m['u']) / (m['w'] / 2)
     curve = m['v'] + 0.012 * np.sin(x * math.pi * 1.1 + 0.6) - 0.01 * x
-    put((abs(x) < 1) & (abs(v - curve) < 0.011), lay['palette']['Mouth'])
+    put((abs(x) < 1) & (abs(v - curve) < 0.011 * FACE_BOLD), lay['palette']['Mouth'])
     from bpy_extras.image_utils import load_image  # noqa: F401  (ensures image module ready)
     im = bpy.data.images.new('FaceTex', size, size, alpha=True)
     im.pixels.foreach_set(img[::-1].ravel())
@@ -713,7 +748,10 @@ def fit_check(sc, persp_cam):
     print('FIT', json.dumps(report, ensure_ascii=False))
 
 
-def render(objs):
+def look_dev(objs):
+    """Toon materials, static face drawing, paper world, head-only cast shadow
+    and the key light. Shared by the verification renders and the pixel-art
+    bake (blender/bake_pixel.py). Returns the temporary face texture path."""
     sc = bpy.context.scene
     toonify()
     tex_path = os.path.join(ROOT, 'docs', '_face_static.png')
@@ -769,6 +807,12 @@ def render(objs):
     sun = bpy.context.active_object
     sun.rotation_euler = (math.radians(50), math.radians(-8), math.radians(-12))  # ~40° high: shadow band under the chin as drawn
     sun.data.energy = 3.0
+    return tex_path
+
+
+def render(objs):
+    sc = bpy.context.scene
+    tex_path = look_dev(objs)
     cam = link(bpy.data.objects.new('Cam', bpy.data.cameras.new('Cam')))
     cam.location = (0, -7.6, 1.6)
     cam.rotation_euler = (math.radians(90), 0, 0)

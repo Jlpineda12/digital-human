@@ -1,7 +1,11 @@
 // node tests/unit.test.mjs  — pure-JS modules (no browser)
 import { VISEMES, PARAMS, wordToVisemes, buildTimeline, sampleTimeline, wordStartTime, tokenize } from '../src/lipsync/visemes.js';
 import { analyze, parseEmotionTag, takeSentences } from '../src/emotion/sentiment.js';
-import { Spring } from '../src/behavior/Behavior.js';
+import { Spring, Behavior } from '../src/behavior/Behavior.js';
+import { cueGesture, sampleGestures, GESTURE_NAMES } from '../src/behavior/gestures.js';
+import { takeGestureCues } from '../src/emotion/sentiment.js';
+import { demoAnswer, PERSONA } from '../src/ai/brains.js';
+import { PROFILE } from '../src/ai/profile.js';
 
 let pass = 0;
 let fail = 0;
@@ -66,6 +70,42 @@ for (const dt of [1 / 120, 1 / 60, 1 / 20, 0.25, 1]) {
   for (let i = 0; i < 400; i++) maxAbs = Math.max(maxAbs, Math.abs(sp.step(1, dt)));
   check(maxAbs <= 1.0001 && Math.abs(sp.v - 1) < 1e-3, `estable y sin rebote con dt=${dt.toFixed(3)} s (máx ${maxAbs.toFixed(4)})`);
 }
+
+console.log('\nGestos');
+const tg = parseEmotionTag('[alegria|asentir] Claro que sí.');
+check(tg.emotion === 'alegria' && tg.gesture === 'asentir' && tg.text === 'Claro que sí.', 'etiqueta [emoción|gesto]');
+check(parseEmotionTag('[duda] Mmm.').gesture === null, 'etiqueta sin gesto sigue funcionando');
+const cues = takeGestureCues('Sí. [negar] No lo creo. Y [ase');
+check(eq(cues.gestures, ['negar']) && !cues.text.includes('[') , 'quita [gesto] del texto hablado y retiene uno incompleto');
+check(cueGesture('¡Hola Jose!', 'user') === 'saludar', 'saludo del usuario → saludar');
+check(cueGesture('¿Qué estudias?', 'user') === 'ladear', 'pregunta del usuario → ladear la cabeza');
+check(cueGesture('Hoy tuve un mal día', 'user') === 'consolar', 'tristeza del usuario → consolar');
+check(cueGesture('Sí, lo hice yo.', 'jose') === 'asentir', 'Jose afirma → asiente');
+check(cueGesture('No, eso no.', 'jose') === 'negar', 'Jose niega → niega con la cabeza');
+check(cueGesture('Quizás, depende.', 'jose') === 'encoger', 'duda → encoge los hombros');
+const active = [{ name: 'asentir', t0: 0 }];
+const mid = sampleGestures(active, 0.12);
+check(Math.abs(mid.pitch) > 0.01 && active.length === 1, 'asentir mueve el pitch');
+sampleGestures(active, 5);
+check(active.length === 0, 'el gesto termina y se descarta');
+const b = new Behavior();
+b.update(0.016, 1);
+b.gesture('negar');
+let maxYaw = 0;
+for (let i = 1; i < 40; i++) maxYaw = Math.max(maxYaw, Math.abs(b.update(0.016, 1 + i * 0.016).head.yaw));
+check(maxYaw > 0.05, `negar gira la cabeza en Behavior (máx ${maxYaw.toFixed(3)} rad)`);
+check(GESTURE_NAMES.every((g) => PERSONA.includes(g)), 'el prompt enseña todos los gestos a Claude');
+
+console.log('\nCerebro demo (perfil de Jose)');
+const ask = (q) => demoAnswer(q, 0);
+check(ask('¿Cuántos años tienes?').text.includes(String(PROFILE.edad)), 'edad: 22 años');
+check(ask('¿Qué estudias?').text.includes('Ingeniería en Multimedia'), 'carrera: Ingeniería en Multimedia');
+check(ask('¿Cuáles son tus aspiraciones?').id === 'metas', 'aspiraciones');
+check(ask('Cuéntame de Arcade Station').id === 'arcade', 'proyecto por nombre');
+check(ask('háblame del addon de blender').id === 'forge', 'proyecto por palabra clave');
+check(ask('¿Qué proyectos tienes?').id === 'proyectos', 'lista de proyectos');
+check(ask('¿Cuál es tu color favorito del universo paralelo?').id !== 'arcade', 'no inventa un proyecto');
+check(PERSONA.includes('22 años') && PERSONA.includes('Ingeniería en Multimedia'), 'Claude recibe edad y carrera');
 
 console.log(`\n${pass}/${pass + fail} OK`);
 process.exit(fail ? 1 : 0);

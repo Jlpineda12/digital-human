@@ -2,6 +2,7 @@
 // into per-frame face parameters, head rotation and morph-target weights.
 import { DEFAULT_FACE } from '../avatar/FaceCanvas.js';
 import { VISEMES, mix } from '../lipsync/visemes.js';
+import { GESTURES, sampleGestures } from './gestures.js';
 
 // Expression presets (face parameters; the mouth is added by the lip-sync)
 export const EXPRESSIONS = {
@@ -51,6 +52,17 @@ export class Behavior {
     this.idleTarget = { x: 0.3, y: 0, t: 0 };
     this.state = 'idle';                      // idle | listening | thinking | speaking
     this.speakEnergy = 0;
+    this.gestures = [];                       // active head/body gestures
+    this.now = 0;
+  }
+
+  /** Plays a gesture (asentir, negar, ladear, reir, saludar, encoger…). */
+  gesture(name, delay = 0) {
+    if (!GESTURES[name]) return false;
+    // the same gesture does not stack on itself
+    if (this.gestures.some((g) => g.name === name && this.now - g.t0 < GESTURES[name].dur * 0.6)) return false;
+    this.gestures.push({ name, t0: this.now + delay });
+    return true;
   }
 
   setEmotion(e) { if (EXPRESSIONS[e]) this.emotion = e; }
@@ -64,6 +76,7 @@ export class Behavior {
   setMouth(params) { this.target = params; }
 
   update(dt, now) {
+    this.now = now;
     // ---- expression blend (300 ms feel)
     const goal = EXPRESSIONS[this.emotion];
     const k = 1 - Math.exp(-dt * 7);
@@ -104,6 +117,7 @@ export class Behavior {
     const pitch = this.pitch.step(gy * 0.16 + this.expr.nod + talkNod, dt);
     const breathe = Math.sin(now * 1.6) * 0.008;
     const roll = this.expr.tilt + Math.sin(now * 0.7) * 0.01;
+    const g = sampleGestures(this.gestures, now);
 
     // ---- blink: random 2-6 s, sometimes double; 140 ms
     this.nextBlink -= dt;
@@ -138,9 +152,11 @@ export class Behavior {
     };
     return {
       face,
-      head: { yaw, pitch: pitch + breathe, roll },
+      head: { yaw: yaw + g.yaw, pitch: pitch + breathe + g.pitch, roll: roll + g.roll },
       morphs: { cheeks_up: e.cheeks * 0.9 + Math.max(0, e.smile) * 0.1, squash: this.speakEnergy * 0.35 },
       breathe,
+      lift: g.lift,
+      gestures: this.gestures.map((x) => x.name),
     };
   }
 }
