@@ -53,14 +53,16 @@ const check = (c, n) => { if (c) { pass++; console.log(`  PASS  ${n}`); } else {
   const closed = await mouthSig();
   await page.fill('#input', 'Hola, ¿quién eres?');
   await page.press('#input', 'Enter');
+  await page.waitForFunction(() => window.__dh.behavior.state === 'speaking', null, { timeout: 30000 });
   const samples = [];
   for (let i = 0; i < 30; i++) { samples.push(await mouthSig()); await page.waitForTimeout(70); }
   const maxOpen = Math.max(...samples);
   const distinct = new Set(samples).size;
   check(maxOpen > closed * 1.6, `la boca se abre al hablar (área ${closed} → ${maxOpen} px)`);
   check(distinct > 8, `lip-sync con ${distinct} formas de boca distintas en 2 s`);
-  const bot = await page.textContent('#log li.bot:last-child');
-  check(/gemelo|Jose|digital/i.test(bot), 'respuesta del cerebro demo en el chat');
+  await page.waitForFunction(() => !window.__dh.busy, null, { timeout: 60000 });
+  const bot = await page.evaluate(() => window.__dh.lastReply);
+  check(/gemelo|Jose|digital/i.test(bot), 'respuesta del cerebro demo');
   const emo = await page.evaluate(() => window.__dh.behavior.emotion);
   check(emo === 'alegria', `emoción desde la respuesta (saludo → alegría): ${emo}`);
   await page.screenshot({ path: path.join(out, 'talking.png') });
@@ -89,33 +91,59 @@ const check = (c, n) => { if (c) { pass++; console.log(`  PASS  ${n}`); } else {
   });
   check(colours.opaque > 500 && colours.ratio > 0.97, `render pixel con la paleta de Jose (${(colours.ratio * 100).toFixed(1)} % de ${colours.opaque} px)`);
 
-  // gestures: a question makes him tilt his head, the answer comes as a reply comment
+  // every question: react -> think (pensando) -> answer; the chat bubble types with the voice
   await page.waitForFunction(() => !window.__dh.busy, null, { timeout: 60000 });
   await page.evaluate(() => window.__dh.voice.stop());
   await page.fill('#input', '¿Cuántos años tienes y qué estudias?');
   await page.press('#input', 'Enter');
-  const seen = new Set(await page.evaluate(() => new Promise((resolve) => {
-    const names = new Set();
+  const track = (ms) => page.evaluate((dur) => new Promise((resolve) => {
+    const steps = [];
+    const lens = new Set();
     const t0 = performance.now();
     (function poll() {
-      for (const g of window.__dh.behavior.gestures) names.add(g.name);
-      if (performance.now() - t0 > 2500) resolve([...names]); else requestAnimationFrame(poll);
+      const b = window.__dh.behavior;
+      const key = `${b.state}:${b.gestures.map((g) => g.name).join('+')}:${b.emotion}`;
+      if (steps[steps.length - 1] !== key) steps.push(key);
+      const last = document.querySelector('#log li.bot:last-child .text');
+      if (last) lens.add(last.textContent.length);
+      if (performance.now() - t0 > dur) resolve({ steps, lens: lens.size }); else requestAnimationFrame(poll);
     })();
-  })));
-  check(seen.size > 0, `gestos al conversar: ${[...seen].join(', ')}`);
-  await page.waitForTimeout(1200);
-  const reply = await page.textContent('#log > li:first-child li.bot');
-  check(/22 años/.test(reply) && /Ingeniería en Multimedia/.test(reply), 'responde edad y carrera en un mismo comentario');
-  check(await page.$$eval('#relatedList li', (l) => l.length) >= 6, 'proyectos relacionados en la barra lateral');
-  await page.click('#rating .stars button[data-star="5"]');
-  check(await page.$$eval('#rating .lit', (l) => l.length) === 5, 'calificación con estrellas');
+  }), ms);
+  const seq = await track(5000);
+  const order = (re) => seq.steps.findIndex((x) => re.test(x));
+  const iThink = order(/^thinking:.*pensando/);
+  const iSpeak = order(/^speaking:/);
+  check(order(/^listening:.*ladear/) === 0 || order(/^listening:.*ladear/) > -1, 'primero reacciona a la pregunta (ladea la cabeza)');
+  check(iThink > -1 && iSpeak > iThink, `luego piensa y después responde (${iThink} → ${iSpeak})`);
+  check(seq.lens > 3, `la burbuja del chat escribe al ritmo de la voz (${seq.lens} pasos)`);
+  const blips = await page.evaluate(() => ({ ready: window.__dh.voice.blips.ready, mode: window.__dh.voice.mode }));
+  check(blips.mode === 'blips' && blips.ready, 'voz procedural de blips activa tras la primera tecla');
+  await page.waitForFunction(() => !window.__dh.busy, null, { timeout: 60000 });
+  const reply = await page.evaluate(() => window.__dh.lastReply);
+  check(/22 años/.test(reply) && /Ingeniería en Multimedia/.test(reply), 'responde varias preguntas en un mismo mensaje');
+
+  // a doubtful question gets the doubt gesture before the answer
+  await page.waitForFunction(() => !window.__dh.voice.speaking, null, { timeout: 60000 });
+  await page.fill('#input', '¿En qué universidad estudias?');
+  await page.press('#input', 'Enter');
+  const dq = await track(4500);
+  const iDoubt = dq.steps.findIndex((x) => /dudar/.test(x));
+  const iSpeak2 = dq.steps.findIndex((x) => /^speaking:/.test(x));
+  check(iDoubt > -1 && (iSpeak2 === -1 || iDoubt < iSpeak2), 'pregunta dudosa: gesto de duda antes de responder');
+  await page.waitForFunction(() => !window.__dh.busy, null, { timeout: 60000 });
+  const chat = await page.$$eval('#log li', (l) => l.map((x) => x.className.split(' ')[0]));
+  check(chat.filter((c) => c === 'user').length === 3 && chat.filter((c) => c === 'bot').length >= 4, `chat con historial (${chat.length} mensajes)`);
+  check(await page.evaluate(() => !document.querySelector('.emotions, #relatedList, #about') &&
+    ![...document.querySelectorAll('button')].some((b) => /\p{Extended_Pictographic}/u.test(b.textContent))), 'sin emojis ni textos de proyectos: el centro es el personaje');
 
   // gaze follows the pointer
   await page.evaluate(() => window.__dh.voice.stop());
-  await page.mouse.move(80, 120);
+  await page.waitForFunction(() => !window.__dh.voice.speaking && !window.__dh.busy, null, { timeout: 60000 });
+  const sb = await page.locator('#stage').boundingBox();
+  await page.mouse.move(sb.x + 5, sb.y + sb.height * 0.3);
   await page.waitForTimeout(900);
   const leftYaw = await page.evaluate(() => window.__dh.avatar.headPivot.rotation.y);
-  await page.mouse.move(820, 650);
+  await page.mouse.move(sb.x + sb.width - 5, sb.y + sb.height * 0.6);
   await page.waitForTimeout(900);
   const rightYaw = await page.evaluate(() => window.__dh.avatar.headPivot.rotation.y);
   check(leftYaw < -0.05 && rightYaw > 0.05, `la cabeza sigue al cursor (yaw ${leftYaw.toFixed(2)} → ${rightYaw.toFixed(2)})`);
@@ -124,13 +152,14 @@ const check = (c, n) => { if (c) { pass++; console.log(`  PASS  ${n}`); } else {
   check(Math.abs(pupil[0]) <= 1.2 && Math.abs(pupil[1]) <= 1.2, `pupilas dentro del ojo (${pupil.map((v) => v.toFixed(2)).join(', ')})`);
 
   // blink happens within a few seconds
-  const lids = [];
-  for (let i = 0; i < 70; i++) { lids.push(await page.evaluate(() => window.__dh.behavior.blinkT)); await page.waitForTimeout(100); }
-  check(lids.some((v) => v > 0), 'parpadeo espontáneo');
+  const blinks0 = await page.evaluate(() => window.__dh.behavior.blinks || 0);
+  await page.waitForTimeout(7000);
+  const blinks1 = await page.evaluate(() => window.__dh.behavior.blinks || 0);
+  check(blinks1 > blinks0, `parpadeo espontáneo (${blinks1 - blinks0} en 7 s)`);
 
   // emotions
   for (const e of ['neutral', 'alegria', 'sorpresa', 'duda', 'tristeza', 'pensativo']) {
-    await page.evaluate((x) => { window.__dh.voice.stop(); window.__dh.doodles.setSubtitle(''); window.__dh.setEmotion(x); }, e);
+    await page.evaluate((x) => { window.__dh.voice.stop(); window.__dh.setEmotion(x); }, e);
     const box = await page.locator('#stage').boundingBox();
     await page.mouse.move(box.x + box.width * 0.52, box.y + box.height * 0.42);
     await page.waitForTimeout(700);

@@ -123,6 +123,7 @@ export class Behavior {
     this.nextBlink -= dt;
     if (this.nextBlink <= 0 && this.blinkT <= 0) {
       this.blinkT = 0.14;
+      this.blinks = (this.blinks || 0) + 1;
       this.doubleBlink = Math.random() < 0.25;
       this.nextBlink = 2 + Math.random() * 4;
     }

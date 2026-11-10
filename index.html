@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>JLP·TV · Jose, humano digital (beta)</title>
-  <meta name="description" content="Jose Luis Pineda en pixel art: un humano digital que conversa contigo, con lip-sync en español, gestos, emociones y IA. Modelado en Blender, horneado con Pixel Sprite Forge y animado con Three.js.">
-  <meta name="theme-color" content="#cc2a36">
+  <title>JOSE.EXE · chatea con mi humano digital (beta)</title>
+  <meta name="description" content="Chatea con Jose Luis Pineda en pixel art: un humano digital que piensa, gesticula y responde con voz procedural de 8 bits.">
+  <meta name="theme-color" content="#0d2a2e">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <link rel="icon" type="image/png" href="assets/pixel/avatar.png">
   <script type="importmap">
@@ -18,127 +18,50 @@
   </script>
 </head>
 <body class="pixel-mode">
-  <header class="masthead">
-    <a class="logo" href="./" aria-label="JLP·TV, inicio">
-      <span class="tv" aria-hidden="true"><i></i></span>
-      <span class="logo-text">JLP<b>·</b>TV</span>
-      <small>tu canal de preguntas</small>
-    </a>
-    <form class="search" id="searchForm" role="search">
-      <input id="search" autocomplete="off" placeholder="Pregúntale algo a Jose…" aria-label="Pregunta rápida">
-      <button type="submit" class="btn">Preguntar</button>
+  <main class="stage" id="stage">
+    <canvas id="gl" aria-label="Jose, humano digital en pixel art"></canvas>
+    <canvas id="fx" aria-hidden="true"></canvas>
+    <div class="loading" id="loading"><span class="spinner"></span> CARGANDO JOSE…</div>
+    <header class="hud">
+      <div class="logo">JOSE<span>.EXE</span> <b class="beta">BETA</b></div>
+    </header>
+  </main>
+
+  <aside class="chat" aria-label="Chat con Jose">
+    <header class="chat-head">
+      <img src="assets/pixel/avatar.png" width="40" height="40" alt="">
+      <div>
+        <strong>JOSE</strong>
+        <small id="presence">en línea</small>
+      </div>
+      <nav class="chat-tools">
+        <button type="button" class="tool" id="voiceBtn" aria-pressed="true" title="Sonido">SONIDO</button>
+        <button type="button" class="tool" id="mirrorBtn" aria-pressed="false" title="Modo espejo: imita tu boca con el micrófono">ESPEJO</button>
+        <button type="button" class="tool" id="settingsBtn" title="Ajustes">AJUSTES</button>
+      </nav>
+    </header>
+
+    <ol class="log" id="log" aria-live="polite"></ol>
+
+    <div class="starters" id="starters">
+      <button type="button">¿Quién eres?</button>
+      <button type="button">¿Qué estudias?</button>
+      <button type="button">¿Cuáles son tus metas?</button>
+    </div>
+
+    <form class="composer" id="composer">
+      <input id="input" autocomplete="off" spellcheck="false" maxlength="300" placeholder="Escribe tu pregunta…" aria-label="Pregunta para Jose">
+      <button type="button" class="tool" id="micBtn" title="Preguntar con la voz">MIC</button>
+      <button type="submit" class="tool send">ENVIAR</button>
     </form>
-    <nav class="toplinks">
-      <a href="https://github.com/Jlpineda12" target="_blank" rel="noopener">GitHub</a>
-      <span aria-hidden="true">|</span>
-      <button type="button" class="linkish" id="settingsBtn">Ajustes</button>
-    </nav>
-  </header>
-
-  <nav class="tabs" aria-label="Secciones">
-    <a href="#watch" class="on">Ver</a>
-    <a href="#comments">Preguntas</a>
-    <a href="#related">Proyectos</a>
-    <a href="#channel">Sobre mí</a>
-  </nav>
-
-  <div class="page">
-    <main class="watch" id="watch">
-      <h1 class="video-title">Jose · humano digital en pixel art <span class="beta">BETA</span></h1>
-
-      <div class="player" id="player">
-        <div class="stage" id="stage">
-          <canvas id="gl" aria-label="Jose, humano digital en pixel art"></canvas>
-          <canvas id="fx" aria-hidden="true"></canvas>
-          <div class="loading" id="loading"><span class="spinner"></span> CARGANDO…</div>
-        </div>
-        <div class="controls">
-          <button type="button" class="ctl" id="playBtn" title="Repetir la última respuesta" aria-label="Repetir la última respuesta">▶</button>
-          <div class="progress" aria-hidden="true"><i id="progress"></i></div>
-          <div class="status" id="status" data-state="idle"><i></i><span>Listo</span></div>
-          <div class="emotions" role="group" aria-label="Probar emociones">
-            <button type="button" data-emo="neutral" title="Neutral">😐</button>
-            <button type="button" data-emo="alegria" title="Alegría">😄</button>
-            <button type="button" data-emo="sorpresa" title="Sorpresa">😮</button>
-            <button type="button" data-emo="duda" title="Duda">🤨</button>
-            <button type="button" data-emo="tristeza" title="Tristeza">😢</button>
-            <button type="button" data-emo="pensativo" title="Pensativo">🤔</button>
-          </div>
-          <button type="button" class="ctl" id="voiceBtn" title="Voz encendida / apagada" aria-label="Voz" aria-pressed="true">🔊</button>
-          <button type="button" class="ctl" id="fsBtn" title="Pantalla completa" aria-label="Pantalla completa">⛶</button>
-        </div>
-      </div>
-
-      <div class="video-info">
-        <div class="rating" id="rating" role="group" aria-label="Califica a Jose">
-          <span class="stars"><button type="button" data-star="1" aria-label="1 estrella">★</button><button type="button" data-star="2" aria-label="2 estrellas">★</button><button type="button" data-star="3" aria-label="3 estrellas">★</button><button type="button" data-star="4" aria-label="4 estrellas">★</button><button type="button" data-star="5" aria-label="5 estrellas">★</button></span>
-          <small id="ratingText">Califica a Jose</small>
-        </div>
-        <div class="views"><b id="answered">0</b> preguntas respondidas</div>
-      </div>
-      <div class="actions">
-        <button type="button" class="btn" id="shareBtn">🔗 Compartir</button>
-        <button type="button" class="btn" id="mirrorBtn">🪞 Modo espejo</button>
-        <a class="btn" href="docs/pixel/jose.png" target="_blank" rel="noopener">👾 Sprite sheet</a>
-        <span class="mode" id="modeLabel">Modo demo</span>
-      </div>
-
-      <section class="comments" id="comments" aria-label="Preguntas y respuestas">
-        <h2>Preguntas y respuestas</h2>
-        <form class="composer" id="composer">
-          <textarea id="input" rows="2" autocomplete="off" placeholder="Escribe tu pregunta para Jose… (Enter para publicar)" aria-label="Pregunta"></textarea>
-          <div class="composer-bar">
-            <button type="button" class="btn mic" id="micBtn" title="Preguntar con la voz" aria-label="Preguntar con la voz">🎙️ Hablar</button>
-            <button type="submit" class="btn primary send" aria-label="Publicar pregunta">Publicar pregunta</button>
-          </div>
-        </form>
-        <div class="suggest" id="suggest">
-          <span>Preguntas populares:</span>
-          <button type="button">Hola, ¿quién eres?</button>
-          <button type="button">¿Qué estudias?</button>
-          <button type="button">¿Qué proyectos tienes?</button>
-          <button type="button">¿Cuáles son tus metas?</button>
-          <button type="button">Cuéntame un chiste</button>
-        </div>
-        <ol class="log" id="log" aria-live="polite"></ol>
-      </section>
-    </main>
-
-    <aside class="side">
-      <section class="box channel" id="channel">
-        <div class="channel-head">
-          <img src="assets/pixel/avatar.png" width="64" height="64" alt="Avatar pixel art de Jose">
-          <div>
-            <strong>JoseDigital</strong>
-            <small>por <a href="https://github.com/Jlpineda12" target="_blank" rel="noopener">Jlpineda12</a></small>
-          </div>
-        </div>
-        <dl class="facts">
-          <dt>Edad</dt><dd>22 años</dd>
-          <dt>Carrera</dt><dd>Ingeniería en Multimedia</dd>
-          <dt>País</dt><dd>Colombia</dd>
-        </dl>
-        <p>Gemelo digital de Jose: modelado en Blender, horneado a pixel art con Pixel Sprite Forge y animado en vivo con Three.js. Pregúntale lo que quieras sobre su carrera, sus proyectos o sus metas.</p>
-        <a class="btn primary subscribe" href="https://github.com/Jlpineda12" target="_blank" rel="noopener">Seguir en GitHub</a>
-      </section>
-
-      <section class="box related" id="related">
-        <h3>Proyectos relacionados</h3>
-        <ol id="relatedList"></ol>
-      </section>
-    </aside>
-  </div>
-
-  <footer class="foot">
-    <p>Hecho por Jose Luis Pineda · Blender → Pixel Sprite Forge → Three.js · <a href="https://github.com/Jlpineda12/digital-human" target="_blank" rel="noopener">Código</a></p>
-  </footer>
+  </aside>
 
   <dialog id="settings">
     <form method="dialog" class="settings">
-      <h2>Ajustes</h2>
+      <h2>AJUSTES</h2>
       <label>Cerebro
         <select id="modeSel">
-          <option value="demo">Demo (sin internet, sabe de Jose y sus proyectos)</option>
+          <option value="demo">Demo (sin internet, sabe de Jose)</option>
           <option value="claude">Claude (conversación libre)</option>
         </select>
       </label>
@@ -146,11 +69,17 @@
         <input id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off">
       </label>
       <label class="claude-only check"><input type="checkbox" id="rememberKey"> Recordar la key en este navegador</label>
-      <p class="claude-only note">La key se usa solo desde tu navegador para hablar con la API de Claude. No la compartas en equipos ajenos.</p>
-      <label>Voz <select id="voiceSel"></select></label>
+      <p class="claude-only note">La key se usa solo desde tu navegador para hablar con la API de Claude.</p>
+      <label>Voz
+        <select id="voiceMode">
+          <option value="blips">Blips de 8 bits (procedural)</option>
+          <option value="tts">Voz del navegador</option>
+        </select>
+      </label>
+      <label class="tts-only">Voz del navegador <select id="voiceSel"></select></label>
       <label>Velocidad <input id="rate" type="range" min="0.7" max="1.4" step="0.05" value="1.05"></label>
-      <label class="check"><input type="checkbox" id="voiceOn" checked> Hablar en voz alta</label>
-      <menu><button value="ok" class="btn primary">Listo</button></menu>
+      <label class="check"><input type="checkbox" id="voiceOn" checked> Sonido encendido</label>
+      <menu><button value="ok" class="tool">OK</button></menu>
     </form>
   </dialog>
 

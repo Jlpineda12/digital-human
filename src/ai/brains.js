@@ -13,7 +13,8 @@ ${profileText()}
 Cómo respondes:
 - Responde cualquier pregunta sobre ti, tu carrera, tus proyectos, tus habilidades y tus metas con detalles concretos: qué tecnologías usaste, cómo funciona, por qué lo hiciste.
 - Si te preguntan algo general (tecnología, consejos, una duda técnica), responde bien y breve, y si encaja conéctalo con tu experiencia.
-- Empieza SIEMPRE con una etiqueta [emoción|gesto]. Emociones: neutral, alegria, sorpresa, duda, tristeza, pensativo. Gestos: asentir, negar, ladear, pensar, reir, saludar, encoger, sorpresa, orgullo, enfasis, consolar. Ejemplo: [alegria|saludar] ¡Hola!
+- Empieza SIEMPRE con una etiqueta [emoción|gesto]. Emociones: neutral, alegria, sorpresa, duda, tristeza, pensativo. Gestos: asentir, negar, ladear, pensar, pensando, dudar, reir, saludar, encoger, sorpresa, orgullo, enfasis, consolar. Ejemplo: [alegria|saludar] ¡Hola!
+- Si la pregunta es ambigua o no sabes la respuesta, usa [duda|dudar] y dilo con honestidad.
 - Elige el gesto según lo que te dicen: asientes cuando afirmas, niegas cuando dices que no, ladeas la cabeza ante algo curioso, te ríes con un chiste, consuelas si alguien está triste, orgullo al hablar de un logro.
 - Dentro del texto puedes poner como mucho un gesto más, justo antes de la frase que acompaña: "[asentir] Sí, lo hice yo."
 - Español natural para decirlo en voz alta: 1 a 3 frases cortas (hasta 4 si piden detalles). Sin markdown, sin listas, sin emojis, sin URLs.
@@ -103,7 +104,7 @@ export const INTENTS = [
     t: () => '¡Hola! Soy Jose, bueno, mi gemelo digital. Pregúntame lo que quieras: mis proyectos, mi carrera o hacia dónde voy.' },
   { id: 'edad', k: ['edad', 'cuantos anos', 'que anos', 'anos tienes', 'naciste'], e: 'alegria', g: 'asentir',
     t: () => `Tengo ${P.edad} años. Joven, pero ya con unos cuantos proyectos encima.` },
-  { id: 'carrera', k: ['carrera', 'estudias', 'estudiaste', 'estudio', 'universidad', 'multimedia', 'profesion', 'ingenier', 'a que te dedicas'], e: 'alegria', g: 'orgullo',
+  { id: 'carrera', k: ['carrera', 'estudias', 'estudiaste', 'que estudio', 'multimedia', 'profesion', 'ingenier', 'a que te dedicas'], e: 'alegria', g: 'orgullo',
     t: () => `Mi carrera es ${P.carrera}. Me encanta porque junta todo lo que me gusta: programación, arte, 3D, sonido e inteligencia artificial.` },
   { id: 'origen', k: ['de donde', 'donde vives', 'pais', 'colombia', 'ciudad'], e: 'alegria', g: 'asentir',
     t: () => `Soy de ${P.pais}. Desde aquí hago juegos, gráficos 3D e inteligencia artificial para el navegador.` },
@@ -129,6 +130,22 @@ export const INTENTS = [
     t: () => 'Difícil escoger. Arcade Station me enseñó a hacer todo a mano, y Pixel Sprite Forge une mis dos mundos: el 3D y el pixel art.' },
   { id: 'contacto', k: ['contact', 'correo', 'email', 'contratar', 'trabajar contigo', 'empleo', 'linkedin', 'colaborar', 'hablar contigo'], e: 'alegria', g: 'asentir',
     t: () => `Me encuentras en GitHub como ${P.github}. Me encantan los proyectos de juegos web, experiencias 3D e inteligencia artificial multimedia. Hablemos.` },
+  { id: 'estado', k: ['como estas', 'como te va', 'como vas', 'todo bien', 'que tal estas'], e: 'alegria', g: 'asentir',
+    t: () => '¡Muy bien! Con todos mis píxeles en su sitio y listo para tus preguntas.' },
+  { id: 'capacidades', k: ['que puedes hacer', 'para que sirves', 'que haces aqui', 'como funciona esto', 'ayuda'], e: 'alegria', g: 'enfasis',
+    t: () => 'Puedo contarte de mí: mi carrera, mis proyectos, lo que sé hacer y mis metas. Y mientras hablo, gesticulo y cambio de emoción.' },
+  { id: 'real', k: ['eres real', 'eres una ia', 'eres un robot', 'eres humano', 'eres una persona', 'eres un bot', 'inteligencia artificial eres'], e: 'pensativo', g: 'ladear',
+    t: () => 'Soy el gemelo digital de Jose: un modelo 3D convertido en pixel art. El Jose de verdad es el que me programó.' },
+  { id: 'creador', k: ['quien te hizo', 'quien te creo', 'quien te programo', 'quien te diseno', 'como te hicieron'], e: 'alegria', g: 'orgullo',
+    t: () => 'Me hizo el Jose de carne y hueso: me modeló en Blender, me pasó a pixel art con su addon y me anima con Three.js.' },
+  { id: 'lenguaje', k: ['lenguaje favorito', 'lenguaje preferido', 'mejor lenguaje', 'en que programas', 'que lenguaje'], e: 'alegria', g: 'asentir',
+    t: () => 'JavaScript. Me gusta construir todo a mano, con Canvas y Web Audio, sin depender de librerías.' },
+  { id: 'experiencia', k: ['experiencia', 'has trabajado', 'que has construido', 'que has creado'], e: 'alegria', g: 'orgullo',
+    t: () => 'He hecho juegos retro para el navegador, una herramienta para Blender, una app móvil con una mascota 3D y modelos de inteligencia artificial para audio y texto.' },
+  { id: 'universidad', k: ['universidad', 'donde estudias', 'en que universidad', 'que semestre', 'cuando te graduas'], e: 'duda', g: 'dudar',
+    t: () => 'Mmm, eso todavía no está en mi memoria. Lo que sí sé es que mi carrera es Ingeniería en Multimedia.' },
+  { id: 'gustos', k: ['hobby', 'hobbies', 'pasatiempo', 'tiempo libre', 'te gusta hacer', 'musica favorita', 'comida favorita', 'color favorito', 'pelicula favorita', 'juego favorito'], e: 'duda', g: 'dudar',
+    t: () => 'Uy, esa no me la sé. Lo que sí sé es que me encanta crear juegos, gráficos 3D e inteligencia artificial.' },
   { id: 'chiste', k: ['chiste', 'broma', 'gracioso', 'hazme reir'], e: 'alegria', g: 'reir',
     t: () => 'Un polígono le dice a otro: no seas triángulo, aquí todos somos quads. Mmm, sí, el humor 3D es difícil.' },
   { id: 'animo', k: ['triste', 'mal dia', 'cansad', 'aburrid', 'deprimid', 'estresad'], e: 'tristeza', g: 'consolar',
@@ -157,14 +174,20 @@ export function demoAnswer(userText, turn = 0) {
     hits.push({ i, id: it.id, emotion: it.e, gesture: it.g, text: it.t(turn) });
   }
   if (!hits.length) {
-    return { id: 'fallback', emotion: 'duda', gesture: 'encoger',
-      text: 'Mmm, eso todavía no está en mi memoria digital. Pregúntame por mis proyectos, mi carrera o mis metas.' };
+    return { id: 'fallback', emotion: 'duda', gesture: 'dudar', doubtful: true,
+      text: 'Mmm, esa no me la sé. Pregúntame por mi carrera, mis proyectos, lo que sé hacer o mis metas.' };
   }
   hits.sort((a, b) => a.i - b.i);
-  const picked = hits.filter((h, k) => hits.findIndex((x) => x.id === h.id) === k).slice(0, 2);
+  // topics whose answer already covers another one
+  const EXCLUDES = { universidad: ['carrera'], creador: ['avatar'], real: ['avatar'] };
+  const ids = new Set(hits.map((h) => h.id));
+  for (const [id, gone] of Object.entries(EXCLUDES)) {
+    if (ids.has(id)) for (let i = hits.length - 1; i >= 0; i--) if (gone.includes(hits[i].id)) hits.splice(i, 1);
+  }
+  const picked = hits.filter((h, k) => hits.findIndex((x) => x.id === h.id) === k).slice(0, 3);
   // a greeting before a real question is answered by the question
   if (picked.length === 2 && picked[0].id === 'saludo') picked[1].text = `¡Hola! ${picked[1].text}`, picked.shift();
-  return { ...picked[0], text: picked.map((h) => h.text).join(' '), ids: picked.map((h) => h.id) };
+  return { ...picked[0], text: picked.map((h) => h.text).join(' '), ids: picked.map((h) => h.id), doubtful: picked[0].emotion === 'duda' };
 }
 
 export class DemoBrain {
@@ -174,7 +197,7 @@ export class DemoBrain {
     const a = demoAnswer(userText, this.turn++);
     yield { type: 'emotion', value: a.emotion };
     yield { type: 'gesture', value: a.gesture };
-    await new Promise((r) => setTimeout(r, 450));      // "thinking"
+    await new Promise((r) => setTimeout(r, 200));
     for (const word of a.text.split(/(?<=\s)/)) {
       yield { type: 'text', delta: word };
       await new Promise((r) => setTimeout(r, 28));

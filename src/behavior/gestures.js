@@ -13,6 +13,11 @@ export const GESTURES = {
   negar:     { dur: 1.1,  f: (t, d) => ({ yaw: 0.13 * Math.sin(TAU * 2.3 * t) * env(t, d), pitch: 0.02 * env(t, d) }) },
   ladear:    { dur: 1.6,  f: (t, d) => ({ roll: -0.12 * env(t, d), yaw: 0.05 * env(t, d) }) },
   pensar:    { dur: 1.8,  f: (t, d) => ({ roll: 0.07 * env(t, d), pitch: -0.07 * env(t, d), yaw: -0.08 * env(t, d) }) },
+  // held while the answer is being worked out: chin up, head tilted, a slow sway
+  pensando:  { dur: 2.4,  f: (t, d) => ({ roll: 0.09 * Math.min(1, t * 3) * env(t * 0.5, d * 0.5 + 0.01) + 0.015 * Math.sin(TAU * 0.6 * t),
+    pitch: -0.08 * Math.min(1, t * 3) * Math.min(1, (d - t) * 3), yaw: -0.1 * Math.min(1, t * 3) * Math.min(1, (d - t) * 3) }) },
+  // doubt: a sideways tilt + small shrug, eyebrow work comes from the 'duda' face
+  dudar:     { dur: 1.3,  f: (t, d) => ({ roll: -0.11 * env(t, d), yaw: 0.06 * Math.sin(TAU * 0.8 * t) * env(t, d), lift: 0.018 * env(t, d) }) },
   reir:      { dur: 1.1,  f: (t, d) => ({ pitch: -0.05 * env(t, d) + 0.03 * Math.sin(TAU * 5 * t) * env(t, d),
     lift: 0.012 * Math.abs(Math.sin(TAU * 2.5 * t)) * env(t, d) }) },
   saludar:   { dur: 1.2,  f: (t, d) => ({ roll: 0.1 * Math.sin(TAU * 0.9 * t) * env(t, d), pitch: -0.04 * env(t, d),

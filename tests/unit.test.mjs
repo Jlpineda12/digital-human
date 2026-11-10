@@ -6,6 +6,8 @@ import { cueGesture, sampleGestures, GESTURE_NAMES } from '../src/behavior/gestu
 import { takeGestureCues } from '../src/emotion/sentiment.js';
 import { demoAnswer, PERSONA } from '../src/ai/brains.js';
 import { PROFILE } from '../src/ai/profile.js';
+import { blipPlan, MOODS } from '../src/speech/Blips.js';
+import { revealedChars } from '../src/lipsync/visemes.js';
 
 let pass = 0;
 let fail = 0;
@@ -106,6 +108,28 @@ check(ask('háblame del addon de blender').id === 'forge', 'proyecto por palabra
 check(ask('¿Qué proyectos tienes?').id === 'proyectos', 'lista de proyectos');
 check(ask('¿Cuál es tu color favorito del universo paralelo?').id !== 'arcade', 'no inventa un proyecto');
 check(PERSONA.includes('22 años') && PERSONA.includes('Ingeniería en Multimedia'), 'Claude recibe edad y carrera');
+
+console.log('\nVoz procedural (blips) y máquina de escribir');
+const tlS = buildTimeline('Mi carrera es Ingeniería en Multimedia.');
+const plan = blipPlan(tlS, { mood: 'neutral', text: 'Mi carrera es Ingeniería en Multimedia.' });
+const vowels = tlS.events.filter((e) => 'AEIOU'.includes(e.v)).length;
+check(plan.length === vowels && plan.length > 8, `un blip por vocal (${plan.length})`);
+check(plan.every((b, i) => i === 0 || b.t > plan[i - 1].t), 'los blips van en orden en el tiempo');
+check(plan.every((b) => b.freq > 80 && b.freq < 900 && b.dur >= 35 && b.dur <= 95), 'tonos y duraciones razonables');
+const avg = (p) => p.reduce((a, b) => a + b.freq, 0) / p.length;
+const happy = blipPlan(tlS, { mood: 'alegria' });
+const sad = blipPlan(tlS, { mood: 'tristeza' });
+check(avg(happy) > avg(plan) && avg(plan) > avg(sad), `alegría más aguda, tristeza más grave (${avg(happy).toFixed(0)} / ${avg(plan).toFixed(0)} / ${avg(sad).toFixed(0)} Hz)`);
+const tlQ = buildTimeline('¿Qué estudias tú?');
+const q = blipPlan(tlQ, { text: '¿Qué estudias tú?' });
+const st = blipPlan(tlQ, { text: 'Qué estudias tú.' });
+check(q[q.length - 1].freq > st[st.length - 1].freq * 1.4, 'una pregunta sube al final (entonación)');
+check(Object.keys(MOODS).length === 6, 'un timbre por emoción');
+const txt = 'Hola, soy Jose.';
+const tlT = buildTimeline(txt);
+check(revealedChars(tlT, 0, txt.length) <= 4, 'la caja empieza casi vacía');
+check(revealedChars(tlT, tlT.total / 2, txt.length) > 4 && revealedChars(tlT, tlT.total / 2, txt.length) < txt.length, 'a mitad de la frase va a mitad del texto');
+check(revealedChars(tlT, tlT.total + 1, txt.length) === txt.length, 'al terminar muestra todo el texto');
 
 console.log(`\n${pass}/${pass + fail} OK`);
 process.exit(fail ? 1 : 0);

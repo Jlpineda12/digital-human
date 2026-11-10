@@ -1,10 +1,13 @@
-// Text-to-speech + procedural lip-sync.
+// Voice + procedural lip-sync. Default: the procedural blip voice
+// (src/speech/Blips.js), one 8-bit tone per syllable. Optional: the browser's
+// text-to-speech (Ajustes → Voz).
 // Each sentence gets a viseme timeline (src/lipsync/visemes.js). With the Web
 // Speech API the timeline starts on `onstart` and is re-anchored on every
 // `onboundary` word event, so the mouth stays in sync even if the voice speeds
 // up or pauses. Without a usable voice it runs in "silent" mode (subtitles +
 // lip-sync on the estimated timing), so the avatar always talks.
-import { buildTimeline, sampleTimeline, wordStartTime } from '../lipsync/visemes.js';
+import { buildTimeline, sampleTimeline, wordStartTime, revealedChars } from '../lipsync/visemes.js';
+import { Blips } from './Blips.js';
 
 export class Voice {
   constructor({ onSentence, onWord, onIdle } = {}) {
@@ -15,6 +18,10 @@ export class Voice {
     this.busy = false;
     this.enabled = true;
     this.rate = 1.05;
+    this.mode = 'blips';                 // 'blips' (procedural) | 'tts' (browser voice)
+    this.mood = 'neutral';               // emotion: tunes the blips
+    this.blips = new Blips();
+    this.sentence = '';
     this.voice = null;
     this.tl = null;
     this.t0 = 0;
@@ -41,8 +48,18 @@ export class Voice {
     if (!this.busy) this.next();
   }
 
+  /** Call from a user gesture once: browsers only allow audio after one. */
+  unlock() { this.blips.unlock(); }
+
+  /** Characters of the current sentence already spoken (typewriter). */
+  revealed(now = performance.now()) {
+    if (!this.tl) return this.sentence.length;
+    return revealedChars(this.tl, now - this.t0, this.sentence.length);
+  }
+
   stop() {
     this.queue = [];
+    this.blips.stop();
     if (this.synth) this.synth.cancel();
     this.tl = null;
     this.busy = false;
@@ -54,14 +71,16 @@ export class Voice {
     const sentence = this.queue.shift();
     if (!sentence) { this.busy = false; this.tl = null; this.onIdle(); return; }
     this.busy = true;
+    this.sentence = sentence;
     this.onSentence(sentence);
-    const useTTS = this.enabled && this.synth && this.voice;
-    this.tl = buildTimeline(sentence, { rate: useTTS ? this.rate : 1 });
+    const useTTS = this.mode === 'tts' && this.enabled && this.synth && this.voice;
+    this.tl = buildTimeline(sentence, { rate: this.rate });
     const done = () => { if (this.current === u) { clearTimeout(this.timer); this.next(); } };
     let u = null;
     if (!useTTS) {
       this.current = null;
       this.t0 = performance.now();
+      if (this.enabled && this.mode === 'blips') this.blips.play(this.tl, { mood: this.mood, text: sentence, seed: sentence.length + 7 });
       this.timer = setTimeout(() => this.next(), this.tl.total + 150);
       return;
     }

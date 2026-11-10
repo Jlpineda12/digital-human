@@ -1,7 +1,7 @@
 {
   "name": "digital-human",
   "version": "0.9.0-beta",
-  "description": "Humano digital en pixel art: conversa sobre Jose, gestos, lip-sync en español, emociones e IA en el navegador",
+  "description": "Chatbot con cara: humano digital en pixel art que reacciona, piensa y duda antes de responder, con voz procedural de 8 bits",
   "type": "module",
   "scripts": {
     "test": "node tests/unit.test.mjs",

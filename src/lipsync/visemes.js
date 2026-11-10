@@ -89,7 +89,7 @@ export function buildTimeline(text, { rate = 1 } = {}) {
     if (/^[.!?…]$/.test(tok.text)) { events.push({ t, dur: DUR.stop * k, v: 'REST' }); t += DUR.stop * k; continue; }
     if (/^[,;:]$/.test(tok.text)) { events.push({ t, dur: DUR.comma * k, v: 'REST' }); t += DUR.comma * k; continue; }
     if (/^[¡¿]$/.test(tok.text)) continue;
-    words.push({ t, index: tok.index });
+    words.push({ t, index: tok.index, len: tok.text.length });
     let vis = wordToVisemes(tok.text);
     if (!vis.length && /\d/.test(tok.text)) vis = ['E', 'TD', 'O'];  // numbers: generic chatter
     for (const v of vis) {
@@ -133,6 +133,18 @@ export function sampleTimeline(tl, t) {
   const out = {};
   for (const p of PARAMS) out[p] = a[p] + (b[p] - a[p]) * s;
   return out;
+}
+
+/** How many characters of the sentence have been "said" at time t (ms):
+ *  the typewriter of the dialogue box follows the voice word by word. */
+export function revealedChars(tl, t, textLength) {
+  if (!tl || t >= tl.total) return textLength;
+  let n = 0;
+  for (const w of tl.words) {
+    if (w.t > t) break;
+    n = w.index + (w.len || 0);
+  }
+  return Math.min(textLength, n);
 }
 
 /** Re-anchors a running timeline to the start of word `wordIdx` (TTS boundary). */

@@ -11,6 +11,7 @@ export class Doodles {
     this.emotion = 'neutral';
     this.subtitle = '';
     this.subtitleT = 0;
+    this.ink = '#f3e9d2';
   }
 
   resize(w, h, dpr) {
@@ -75,12 +76,15 @@ export class Doodles {
     this.boil = Math.floor(s.time * 12);
     this.emotionT += s.dt;
     this.subtitleT += s.dt;
-    ctx.setTransform(d, 0, 0, d, 0, 0);
+    // clear in device pixels BEFORE scaling: with a fractional scale (pixel
+    // mode) clearing in scaled units left old bubbles/doodles stuck on screen
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.setTransform(d, 0, 0, d, 0, 0);
     const { x, y, r } = s.head;
     const pop = Math.min(1, this.emotionT * 4);         // doodles pop in
     const k = 1 - (1 - pop) ** 3;
-    const col = '#6b4b4b';
+    const col = this.ink;            // doodle ink: light, so it reads on the dark teal backdrop
 
     if (s.thinking) {
       // thought bubble with three dots
@@ -91,7 +95,7 @@ export class Doodles {
       this.stroke(this.circlePts(bx, by, r * 0.42, r * 0.28, 22), { color: col, width: 3.5, seed: 3 });
       for (let i = 0; i < 3; i++) {
         const on = Math.floor(s.time * 3) % 3 >= i;
-        ctx.fillStyle = on ? '#ff5d8f' : 'rgba(107,75,75,0.3)';
+        ctx.fillStyle = on ? '#ff5d8f' : 'rgba(243,233,210,0.35)';
         ctx.beginPath();
         ctx.arc(bx - r * 0.18 + i * r * 0.18, by, 6, 0, TAU);
         ctx.fill();
@@ -102,7 +106,7 @@ export class Doodles {
         const cx = x + Math.cos(a) * r * 1.25;
         const cy = y + Math.sin(a) * r * 1.15;
         const sz = (14 + i * 4) * k * (1 + 0.15 * Math.sin(s.time * 6 + i));
-        this.star(cx, cy, sz, i, ['#ffb000', '#ff5d8f', '#00c2a8'][i]);
+        this.star(cx, cy, sz, i, ['#ffc94a', '#ff5d8f', '#fff1c9'][i]);
       }
     } else if (this.emotion === 'sorpresa') {
       const cx = x + r * 1.05;
